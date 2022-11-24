@@ -92,7 +92,6 @@ dependencies:
     - gymnasium-notices==0.0.1
     - pettingzoo==1.22.2
     - pygame==2.1.2
-    - pymunk==6.3.0
     - supersuit==3.7.0
     - tinyscaler==1.2.4
     - tqdm==4.64.1

@@ -10,6 +10,11 @@ git clone https://github.com/davidluozhang/AttackDefendRL
 cd AttackDefendRL
 conda env create -f environment.yml
 ```
+Because of some jank behavior with the version of `pymunk` that `supersuit` installs, we actually need to install `pymunk==6.3.0`:
+
+```
+pip install pymunk==6.3.0
+```
 
 You should then be able to test your installation by running `test_zoo.py`, which is a simple `pettingzoo` example taken from the docs.
 
