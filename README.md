@@ -1,4 +1,4 @@
-# AttackDefendRL
+# BasedRL
 Fall 22 CIS 520 Final Project
 
 ## Installation & Quickstart
