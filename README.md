@@ -6,8 +6,8 @@ Fall 22 CIS 520 Final Project
 The current environment requires PyTorch 1.13 and PettingZoo 1.22.2, which can be installed via the provided Conda environment file. 
 
 ```
-git clone https://github.com/davidluozhang/AttackDefendRL
-cd AttackDefendRL
+git clone https://github.com/davidluozhang/BasedRL
+cd BasedRL
 conda env create -f environment.yml
 ```
 Because of some jank behavior with the version of `pymunk` that `supersuit` installs, we actually need to install `pymunk==6.3.0`:
