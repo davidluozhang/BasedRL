@@ -30,3 +30,26 @@ if your name is Alyssa.
 A few caveats:
 - The environment has only been tested with Python 3.10, use Python 3.9 at your own risk
 - The default `pip install supersuit` requires a different `pymunk` version, but only `pymunk==6.3.0` will work because of a jank thing with callbacks and Apple security. 
+
+Reward Functions 
+- Poacher
+    +: Catching animal. 
+    -: Getting caught by ranger
+    4x4 grid: 3 traps 
+- Rangers: 
+    -: catching animal 
+    +: deactivate traps 
+    +: catch poacher - same square 
+Poacher: 4 actions for directions, 1 for setting down trap, 
+Ranger: 4 directions
+
+
+POV of Poacher: 
+- trap locations 
+- your own footprints 
+- ranger footprints 
+
+Rangers:
+- their own friends: global 
+- poacher's footprints: local 
+-
