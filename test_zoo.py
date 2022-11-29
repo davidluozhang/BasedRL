@@ -5,7 +5,7 @@ The intention was for users to have a (relatively clean) ~200 line file to refer
 
 Author: Jet (https://github.com/jjshoots)
 """
-
+import faulthandler
 import numpy as np
 import torch
 import torch.nn as nn
@@ -14,7 +14,8 @@ from supersuit import color_reduction_v0, frame_stack_v1, resize_v1
 from torch.distributions.categorical import Categorical
 
 from pettingzoo.butterfly import pistonball_v6
-
+from pettingzoo.mpe import simple_adversary_v2
+faulthandler.enable()
 
 class Agent(nn.Module):
     def __init__(self, num_actions):
@@ -89,7 +90,8 @@ def unbatchify(x, env):
 if __name__ == "__main__":
 
     """ALGO PARAMS"""
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    #device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")d
+    device = torch.device("cpu")
     ent_coef = 0.1
     vf_coef = 0.1
     clip_coef = 0.1
