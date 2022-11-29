@@ -8,7 +8,7 @@ from gymnasium.spaces import Discrete, MultiDiscrete
 from gymnasium import spaces
 
 
-from pettingzoo.utils.env import ParallelEnv
+from pettingzoo.utils.env import ParallelEnv, wrappers
 
 # Global vars
 NUM_ROWS = 4 
@@ -25,8 +25,18 @@ RANGER_TRAP_REWARD = 0.5
 RANGER_CATCH_REWARD = 20
 TIMEOUT = 100 
 
+def env(render_mode=None):
+    internal_render_mode = render_mode if render_mode != "ansi" else "human"
+    env = CustomEnvironment(render_mode=internal_render_mode)
+    if render_mode == "ansi":
+        env = wrappers.CaptureStdoutWrapper(env)
+    env = wrappers.TerminateIllegalWrapper(env, illegal_reward=-1)
+    env = wrappers.AssertOutOfBoundsWrapper(env)
+    env = wrappers.OrderEnforcingWrapper(env)
+    return env
+
 class CustomEnvironment(ParallelEnv):
-    def __init__(self):
+    def __init__(self, render_mode="ansi"):
         self.poacher_x = None 
         self.poacher_y = None 
         self.poacher_traps = None
@@ -56,8 +66,9 @@ class CustomEnvironment(ParallelEnv):
         self.grid = []
         for i in range(NUM_ROWS):
             row = [{'animal_density': random.random(), 'has_trap': False, 'ranger_vis': False, 'poacher_vis': False} for _ in range(NUM_COLS)]
-            self.grid.append([row])
+            self.grid.append(row)
         self.possible_agents = ["poacher", "ranger"]
+        self.render_mode = render_mode
 
     def reset(self, seed=None, return_info=False, options=None):
         self.agents = copy(self.possible_agents)
@@ -67,7 +78,7 @@ class CustomEnvironment(ParallelEnv):
         self.poacher_y = POACHER_INIT_Y
         self.poacher_traps = POACHER_NUM_TRAPS
 
-        self.ranger_X = RANGER_INIT_X
+        self.ranger_x = RANGER_INIT_X
         self.ranger_y = RANGER_INIT_Y
 
         observation = [] # this might be rlly jank
@@ -173,6 +184,9 @@ class CustomEnvironment(ParallelEnv):
 
         # Get dummy infos TODO maybe add something here
         infos = {"ranger": {}, "poacher": {}}
+
+        if self.render_mode == "human":
+            self.render()
         
         return observations, rewards, terminations, truncations, infos
         
