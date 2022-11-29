@@ -47,6 +47,12 @@ class CustomEnvironment(ParallelEnv):
                      "action_mask": spaces.Discrete(5),
                 }),    
             }
+
+        self.action_spaces = {
+            "ranger": spaces.Discrete(4),
+            "poacher": spaces.Discrete(5),   
+            }
+        
         self.grid = []
         for i in range(NUM_ROWS):
             row = [{'animal_density': random.random(), 'has_trap': False, 'ranger_vis': False, 'poacher_vis': False} for _ in range(NUM_COLS)]
@@ -190,9 +196,13 @@ class CustomEnvironment(ParallelEnv):
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
-         
-        return MultiDiscrete([7 * 7 - 1] * 3)
+        return self.observation_spaces[agent]
 
     @functools.lru_cache(maxsize=None)
     def action_space(self, agent):
         return self.action_spaces[agent]
+
+from pettingzoo.test import parallel_api_test  # noqa: E402
+
+if __name__ == "__main__":
+    parallel_api_test(CustomEnvironment(), num_cycles=1_000_000)
