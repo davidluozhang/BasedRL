@@ -27,6 +27,7 @@ from tianshou.utils.net.common import Net
 from torch.utils.tensorboard import SummaryWriter
 
 from GSGEnvironment.gsg_environment import gsg_environment
+from pettingzoo.classic import tictactoe_v3
 
 
 def get_parser() -> argparse.ArgumentParser:
@@ -60,6 +61,11 @@ def get_parser() -> argparse.ArgumentParser:
         help="the expected winning rate: Optimal policy can get 0.7",
     )
     parser.add_argument(
+        "--agent-learn",
+        default='random',
+        help="what algorithm do we use"
+    )
+    parser.add_argument(
         "--watch",
         default=False,
         action="store_true",
@@ -80,7 +86,7 @@ def get_parser() -> argparse.ArgumentParser:
         "for resuming from a pre-trained agent",
     )
     parser.add_argument(
-        "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu"
+        "--device", type=str, default="mps" if torch.backends.mps.is_available() else "cpu"
     )
     return parser
 
@@ -104,7 +110,8 @@ def get_agents(
         observation_space["observation"].shape or observation_space["observation"].n
     )
     args.action_shape = env.action_space.shape or env.action_space.n
-    if agent_learn is None:
+
+    if agent_learn == 'dqn':
         # model
         net = Net(
             args.state_shape,
@@ -124,6 +131,12 @@ def get_agents(
         if args.resume_path:
             agent_learn.load_state_dict(torch.load(args.resume_path))
 
+    elif agent_learn == 'random':
+        print('based')
+        agent_learn = RandomPolicy()
+
+    agent_learn = RandomPolicy()
+
     if agent_opponent is None:
         if args.opponent_path:
             agent_opponent = deepcopy(agent_learn)
@@ -131,15 +144,13 @@ def get_agents(
         else:
             agent_opponent = RandomPolicy()
 
-    if args.agent_id == 1:
-        agents = [agent_learn, agent_opponent]
-    else:
-        agents = [agent_opponent, agent_learn]
+    agents = [agent_learn, agent_opponent]
     policy = MultiAgentPolicyManager(agents, env)
     return policy, optim, env.agents
 
 
 def get_env(render_mode=None):
+    #return PettingZooEnv(tictactoe_v3.env(render_mode=render_mode))
     return PettingZooEnv(gsg_environment.env(render_mode=render_mode))
 
 
@@ -175,7 +186,7 @@ def train_agent(
     train_collector.collect(n_step=args.batch_size * args.training_num)
 
     # ======== tensorboard logging setup =========
-    log_path = os.path.join(args.logdir, "tic_tac_toe", "dqn")
+    log_path = os.path.join(args.logdir, "gsg", "random")
     writer = SummaryWriter(log_path)
     writer.add_text("args", str(args))
     logger = TensorboardLogger(writer)
@@ -186,23 +197,23 @@ def train_agent(
             model_save_path = args.model_save_path
         else:
             model_save_path = os.path.join(
-                args.logdir, "tic_tac_toe", "dqn", "policy.pth"
+                args.logdir, "gsg", "random", "policy.pth"
             )
         torch.save(
-            policy.policies[agents[args.agent_id - 1]].state_dict(), model_save_path
+            policy.policies[agents[0]].state_dict(), model_save_path
         )
 
     def stop_fn(mean_rewards):
         return mean_rewards >= args.win_rate
 
     def train_fn(epoch, env_step):
-        policy.policies[agents[args.agent_id - 1]].set_eps(args.eps_train)
+        policy.policies[agents[0]]#.set_eps(args.eps_train)
 
     def test_fn(epoch, env_step):
-        policy.policies[agents[args.agent_id - 1]].set_eps(args.eps_test)
+        policy.policies[agents[0]]#.set_eps(args.eps_test)
 
     def reward_metric(rews):
-        return rews[:, args.agent_id - 1]
+        return rews[:, 0]
 
     # trainer
     result = offpolicy_trainer(
@@ -224,7 +235,7 @@ def train_agent(
         reward_metric=reward_metric,
     )
 
-    return result, policy.policies[agents[args.agent_id - 1]]
+    return result, policy.policies[agents[0]]
 
 
 # ======== a test function that tests a pre-trained agent ======
@@ -238,11 +249,11 @@ def watch(
         args, agent_learn=agent_learn, agent_opponent=agent_opponent
     )
     policy.eval()
-    policy.policies[agents[args.agent_id - 1]].set_eps(args.eps_test)
+    policy.policies[agents[0]]#.set_eps(args.eps_test)
     collector = Collector(policy, env, exploration_noise=True)
     result = collector.collect(n_episode=1, render=args.render)
     rews, lens = result["rews"], result["lens"]
-    print(f"Final reward: {rews[:, args.agent_id - 1].mean()}, length: {lens.mean()}")
+    print(f"Final reward: {rews[:, 0].mean()}, length: {lens.mean()}")
 
 
 if __name__ == "__main__":
