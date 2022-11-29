@@ -15,14 +15,15 @@ NUM_ROWS = 4
 NUM_COLS = 4
 POACHER_INIT_X = 0
 POACHER_INIT_Y = 0
-POACHER_NUM_TRAPS = 3
+POACHER_NUM_TRAPS = 5
 POACHER_CATCH_REWARD = 0.5
 POACHER_CAUGHT_PENALTY = -20
 
 RANGER_INIT_X = 3
 RANGER_INIT_Y = 3
-RANGER_TRAP_REWARD = 0.5
+RANGER_TRAP_REWARD = 1
 RANGER_CATCH_REWARD = 20
+RANGER_TIME_PENALTY = 0.3
 TIMEOUT = 100
 
 
@@ -72,11 +73,12 @@ class CustomEnvironment(AECEnv):
         }
 
         self.grid = []
+        random.seed(123)
         for i in range(NUM_ROWS):
             row = [{'animal_density': random.random(), 'has_trap': False, 'ranger_vis': 0, 'poacher_vis': 0} for
                    _ in range(NUM_COLS)]
             self.grid.append(row)
-        
+
         self.possible_agents = ["poacher", "ranger"]
         self.agents = self.possible_agents[:]
 
@@ -96,7 +98,7 @@ class CustomEnvironment(AECEnv):
         # board_vals = np.array(self.grid).reshape(NUM_ROWS, NUM_COLS)
         cur_player = self.possible_agents.index(agent)
         opp_player = (cur_player + 1) % 2
-        
+
         # cur_p_board = np.equal(board_vals, cur_player + 1)
         # opp_p_board = np.equal(board_vals, opp_player + 1)
 
@@ -140,7 +142,7 @@ class CustomEnvironment(AECEnv):
             )
         observation = np.stack([np.array(ranger_steps), np.array(poacher_steps)], axis=2).astype(np.int8)
         # observation = (observation)
-        
+
         observations = {
             "ranger": {"observation": observation, "action_mask": np.zeros(5)},
             "poacher": {"observation": observation, "action_mask": np.zeros(5)},
@@ -155,7 +157,7 @@ class CustomEnvironment(AECEnv):
         return {"observation": observation, "action_mask": action_mask}
 
     def reset(self, seed=None, return_info=False, options=None):
-        
+
         self.agents = self.possible_agents[:]
         self.rewards = {i: 0 for i in self.agents}
         self._cumulative_rewards = {i: 0 for i in self.agents}
@@ -168,7 +170,7 @@ class CustomEnvironment(AECEnv):
 
         self.ranger_x = RANGER_INIT_X
         self.ranger_y = RANGER_INIT_Y
-        
+
         self._agent_selector.reinit(self.agents)
         self._agent_selector.reset()
         self.agent_selection = self._agent_selector.reset()
@@ -228,7 +230,7 @@ class CustomEnvironment(AECEnv):
         # terminate if ranger catches poacher
         if self.poacher_x == self.ranger_x and self.poacher_y == self.ranger_y:
             self.rewards['poacher'] = POACHER_CAUGHT_PENALTY
-            self.rewards['ranger'] =  RANGER_CATCH_REWARD
+            self.rewards['ranger'] = RANGER_CATCH_REWARD
             self.terminations = {a: True for a in self.agents}
 
         # Reward ranger if it picks up a trap:
@@ -236,18 +238,23 @@ class CustomEnvironment(AECEnv):
             self.grid[self.ranger_y][self.ranger_x]['has_trap'] = False
             self.rewards["ranger"] += RANGER_TRAP_REWARD
 
-        # Reward poacher for placed traps
+        # Reward poacher for placed traps and survival
         self.rewards["poacher"] += self.get_poacher_reward()
+        self.rewards["poacher"] += RANGER_TIME_PENALTY
+
+        # Penalize ranger for time delay and caught animals
+        self.rewards["ranger"] -= self.get_poacher_reward()
+        self.rewards["ranger"] -= RANGER_TIME_PENALTY
         self.timestep += 1
 
-        print(f"Timestep {self.timestep}: Poacher Reward {self.rewards['poacher']}")
-        print(f"Timestep {self.timestep}: Poacher Location {self.poacher_x} {self.poacher_y}")
-        print(f"Timestep {self.timestep}: Ranger Reward {self.rewards['ranger']}")
-        print(f"Timestep {self.timestep}: Ranger Location {self.ranger_x} {self.ranger_y}")
+        #print(f"Timestep {self.timestep}: Poacher Reward {self.rewards['poacher']}")
+        #print(f"Timestep {self.timestep}: Poacher Location {self.poacher_x} {self.poacher_y}")
+        #print(f"Timestep {self.timestep}: Ranger Reward {self.rewards['ranger']}")
+        #print(f"Timestep {self.timestep}: Ranger Location {self.ranger_x} {self.ranger_y}")
 
         if self.timestep > TIMEOUT:
             self.truncations = {a: True for a in self.agents}
-        
+
         self._cumulative_rewards[self.agent_selection] = 0
         self.agent_selection = next_agent
 
