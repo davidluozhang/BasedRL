@@ -13,6 +13,7 @@ import argparse
 import os
 from copy import deepcopy
 from typing import Optional, Union, Tuple
+import faulthandler
 
 import gym
 import numpy as np
@@ -27,6 +28,7 @@ from tianshou.utils.net.common import Net
 from torch.utils.tensorboard import SummaryWriter
 
 from GSGEnvironment.gsg_environment import gsg_environment
+faulthandler.enable()
 
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
@@ -161,6 +163,7 @@ def get_agents(
             target_update_freq=args.target_update_freq,
         )
         if args.resume_path:
+            #print(f"Loading pretrained DQN model from {args.resume_path}")
             agent_opponent.load_state_dict(torch.load(args.resume_path))
     elif agent_opponent == 'random':
         agent_opponent = RandomPolicy()
@@ -169,7 +172,7 @@ def get_agents(
         agents = [agent_learn, agent_opponent]
     else:
         agents = [agent_opponent, agent_learn]
-    print(agents)
+    # print(agents)
     policy = MultiAgentPolicyManager(agents, env)
     return policy, optim, env.agents
 
@@ -213,6 +216,7 @@ def train_agent(
 
     # ======== tensorboard logging setup =========
     log_path = os.path.join(args.logdir, "gsg", args.agent_learn)
+    print(f"tensorboard log path: {log_path}")
     writer = SummaryWriter(log_path)
     writer.add_text("args", str(args))
     logger = TensorboardLogger(writer)
@@ -225,6 +229,7 @@ def train_agent(
             model_save_path = os.path.join(
                 args.logdir, "gsg", args.agent_learn, "policy.pth"
             )
+        print(f"Model Save Path: {model_save_path}")
         torch.save(
             policy.policies[agents[args.agent_id]].state_dict(), model_save_path
         )
@@ -277,7 +282,9 @@ def watch(
     policy.eval()
     policy.policies[agents[args.agent_id]].set_eps(args.eps_test)
     collector = Collector(policy, env, exploration_noise=True)
-    result = collector.collect(n_episode=1, render=args.render)
+
+    # result = collector.collect(n_episode=1, render=args.render)
+    result = collector.collect(n_episode=1)
     rews, lens = result["rews"], result["lens"]
     print(f"Final reward: {rews[:, args.agent_id].mean()}, length: {lens.mean()}")
 
