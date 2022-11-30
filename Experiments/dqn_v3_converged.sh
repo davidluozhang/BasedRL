@@ -1,4 +1,5 @@
 #!/bin/zsh
+echo "===== Converged within 10 epochs at game length 12 (ranger) and 11 (poacher) with poacher survival reward ====="
 echo "===== dqn_fast_2, poacher survival reward, ranger first, short epochs, fast alternation, starting ====="
 python ~/BasedRL/main.py --agent-id 1 --agent-learn "dqn" --epoch 1 --step-per-epoch 1000 --lr .01 --logdir "dqn_fast_2/ranger"
 python ~/BasedRL/main.py --agent-id 0 --agent-learn "dqn" --epoch 1 --step-per-epoch 1000 --lr .01 --logdir "dqn_fast_2/poacher"
