@@ -37,6 +37,7 @@ def env(render_mode=None):
     env = wrappers.OrderEnforcingWrapper(env)
     return env
 
+
 class CustomEnvironment(AECEnv):
     metadata = {
         "render_modes": ["human", "ansi"],
@@ -86,7 +87,7 @@ class CustomEnvironment(AECEnv):
         self._cumulative_rewards = {i: 0 for i in self.agents}
         self.terminations = {i: False for i in self.agents}
         self.truncations = {i: False for i in self.agents}
-        self.infos = {i: {} for i in self.agents} # TODO maybe actually use infos
+        self.infos = {i: {} for i in self.agents}  # TODO maybe actually use infos
 
         self._agent_selector = agent_selector(self.agents)
         self.agent_selection = self._agent_selector.reset()
@@ -163,7 +164,7 @@ class CustomEnvironment(AECEnv):
         self._cumulative_rewards = {i: 0 for i in self.agents}
         self.terminations = {i: False for i in self.agents}
         self.truncations = {i: False for i in self.agents}
-        self.infos = {i: {} for i in self.agents} # TODO maybe actually use infos
+        self.infos = {i: {} for i in self.agents}  # TODO maybe actually use infos
         self.poacher_x = POACHER_INIT_X
         self.poacher_y = POACHER_INIT_Y
         self.poacher_traps = POACHER_NUM_TRAPS
@@ -231,6 +232,7 @@ class CustomEnvironment(AECEnv):
         if self.poacher_x == self.ranger_x and self.poacher_y == self.ranger_y:
             self.rewards['poacher'] = POACHER_CAUGHT_PENALTY
             self.rewards['ranger'] = RANGER_CATCH_REWARD
+            # print(f"Caught after {self.timestep} steps")
             self.terminations = {a: True for a in self.agents}
 
         # Reward ranger if it picks up a trap:
@@ -240,17 +242,17 @@ class CustomEnvironment(AECEnv):
 
         # Reward poacher for placed traps and survival
         self.rewards["poacher"] += self.get_poacher_reward()
-        self.rewards["poacher"] += RANGER_TIME_PENALTY
+        # self.rewards["poacher"] += RANGER_TIME_PENALTY
 
         # Penalize ranger for time delay and caught animals
         self.rewards["ranger"] -= self.get_poacher_reward()
         self.rewards["ranger"] -= RANGER_TIME_PENALTY
         self.timestep += 1
 
-        #print(f"Timestep {self.timestep}: Poacher Reward {self.rewards['poacher']}")
-        #print(f"Timestep {self.timestep}: Poacher Location {self.poacher_x} {self.poacher_y}")
-        #print(f"Timestep {self.timestep}: Ranger Reward {self.rewards['ranger']}")
-        #print(f"Timestep {self.timestep}: Ranger Location {self.ranger_x} {self.ranger_y}")
+        # print(f"Timestep {self.timestep}: Poacher Reward {self.rewards['poacher']}")
+        # print(f"Timestep {self.timestep}: Poacher Location {self.poacher_x} {self.poacher_y}")
+        # print(f"Timestep {self.timestep}: Ranger Reward {self.rewards['ranger']}")
+        # print(f"Timestep {self.timestep}: Ranger Location {self.ranger_x} {self.ranger_y}")
 
         if self.timestep > TIMEOUT:
             self.truncations = {a: True for a in self.agents}
@@ -259,7 +261,7 @@ class CustomEnvironment(AECEnv):
         self.agent_selection = next_agent
 
         self._accumulate_rewards()
-        #if self.render_mode == "human" and self.agent_selection == 'poacher':
+        # if self.render_mode == "human" and self.agent_selection == 'poacher':
         #    self.render()
 
     # ToDo: Penalize the poacher for how many traps it puts down to prevent spamming
