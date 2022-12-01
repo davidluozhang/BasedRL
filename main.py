@@ -21,11 +21,12 @@ import torch
 from tianshou.data import Collector, VectorReplayBuffer
 from tianshou.env import DummyVectorEnv
 from tianshou.env.pettingzoo_env import PettingZooEnv
-from tianshou.policy import BasePolicy, DQNPolicy, MultiAgentPolicyManager, RandomPolicy
+from tianshou.policy import BasePolicy, DQNPolicy, PGPolicy, MultiAgentPolicyManager, RandomPolicy
 from tianshou.trainer import offpolicy_trainer
 from tianshou.utils import TensorboardLogger
 from tianshou.utils.net.common import Net
 from torch.utils.tensorboard import SummaryWriter
+from torch.distributions.categorical import Categorical
 
 from GSGEnvironment.gsg_environment import gsg_environment
 faulthandler.enable()
@@ -142,6 +143,25 @@ def get_agents(
         if args.resume_path:
             agent_learn.load_state_dict(torch.load(args.resume_path))
 
+    elif agent_learn == 'reinforce':
+        # model
+        net = Net(
+            args.state_shape,
+            args.action_shape,
+            hidden_sizes=args.hidden_sizes,
+            device=args.device,
+        ).to(args.device)
+        if optim is None:
+            optim = torch.optim.Adam(net.parameters(), lr=args.lr)
+        agent_learn = PGPolicy(
+            net,
+            optim,
+            Categorical,
+            args.gamma,
+        ) # TODO add support for additional hyperparameters
+        if args.resume_path:
+            agent_learn.load_state_dict(torch.load(args.resume_path))
+
     elif agent_learn == 'random':
         agent_learn = RandomPolicy()
 
@@ -165,6 +185,26 @@ def get_agents(
         if args.resume_path:
             #print(f"Loading pretrained DQN model from {args.resume_path}")
             agent_opponent.load_state_dict(torch.load(args.resume_path))
+
+    elif agent_opponent == 'reinforce':
+        # model
+        net = Net(
+            args.state_shape,
+            args.action_shape,
+            hidden_sizes=args.hidden_sizes,
+            device=args.device,
+        ).to(args.device)
+        if optim is None:
+            optim = torch.optim.Adam(net.parameters(), lr=args.lr)
+        agent_opponent = PGPolicy(
+            net,
+            optim,
+            Categorical,
+            args.gamma,
+        ) # TODO add support for additional hyperparameters
+        if args.resume_path:
+            agent_opponent.load_state_dict(torch.load(args.resume_path))
+
     elif agent_opponent == 'random':
         agent_opponent = RandomPolicy()
 
