@@ -281,6 +281,7 @@ class CustomEnvironment(AECEnv):
         print("=" * 10)
         for y in range(NUM_COLS):
             for x in range(NUM_ROWS):
+                grid[y][x] += str(round(self.grid[y][x]['animal_density'], 2))
                 if self.grid[y][x]['has_trap']:
                     grid[y][x] = "T" if grid[y][x] == 0 else grid[y][x] + "T"
             print(f"{grid[y]} \n")

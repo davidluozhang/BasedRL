@@ -18,18 +18,46 @@ import faulthandler
 import gym
 import numpy as np
 import torch
+import torch.nn as nn
 from tianshou.data import Collector, VectorReplayBuffer
 from tianshou.env import DummyVectorEnv
 from tianshou.env.pettingzoo_env import PettingZooEnv
-from tianshou.policy import BasePolicy, DQNPolicy, PGPolicy, MultiAgentPolicyManager, RandomPolicy
+from tianshou.policy import BasePolicy, DQNPolicy, PGPolicy, PPOPolicy, MultiAgentPolicyManager, RandomPolicy
 from tianshou.trainer import offpolicy_trainer
 from tianshou.utils import TensorboardLogger
-from tianshou.utils.net.common import Net
+from tianshou.utils.net.common import Net, ActorCritic
+from tianshou.utils.net.discrete import Actor, Critic
 from torch.utils.tensorboard import SummaryWriter
 from torch.distributions.categorical import Categorical
 
 from GSGEnvironment.gsg_environment import gsg_environment
 faulthandler.enable()
+
+class Agent(nn.Module):
+    def __init__(self, num_actions):
+        super().__init__()
+
+        self.network = nn.Sequential(
+            self._layer_init(nn.Conv2d(4, 32, 3, padding=1)),
+            nn.MaxPool2d(2),
+            nn.ReLU(),
+            self._layer_init(nn.Conv2d(32, 64, 3, padding=1)),
+            nn.MaxPool2d(2),
+            nn.ReLU(),
+            self._layer_init(nn.Conv2d(64, 128, 3, padding=1)),
+            nn.MaxPool2d(2),
+            nn.ReLU(),
+            nn.Flatten(),
+            self._layer_init(nn.Linear(128 * 8 * 8, 512)),
+            nn.ReLU(),
+        )
+        self.actor = self._layer_init(nn.Linear(512, num_actions), std=0.01)
+        self.critic = self._layer_init(nn.Linear(512, 1))
+
+    def _layer_init(self, layer, std=np.sqrt(2), bias_const=0.0):
+        torch.nn.init.orthogonal_(layer.weight, std)
+        torch.nn.init.constant_(layer.bias, bias_const)
+        return layer
 
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
@@ -100,6 +128,9 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu"
     )
+    parser.add_argument(
+        "--eval_only", action='store_true',
+    )
     return parser
 
 def get_args() -> argparse.Namespace:
@@ -162,6 +193,47 @@ def get_agents(
         if args.resume_path:
             agent_learn.load_state_dict(torch.load(args.resume_path))
 
+    elif agent_learn == 'ppo':
+        # model
+        actor_net = Net(
+            args.state_shape,
+            args.action_shape,
+            hidden_sizes=args.hidden_sizes,
+            device=args.device,
+        )
+
+        critic_net = Net(
+            args.state_shape,
+            args.action_shape,
+            hidden_sizes=args.hidden_sizes,
+            device=args.device,
+        )
+
+        actor = Actor(
+            preprocess_net=actor_net,
+            action_shape=5,
+        ).to(args.device)
+
+        critic = Critic(
+            preprocess_net=critic_net,
+            device=args.device,
+        ).to(args.device)
+
+        # TODO there might be some manual weight initialization strategies that work better here
+        if optim is None:
+            optim = torch.optim.Adam(net.parameters(), lr=args.lr)
+
+        agent_learn = PPOPolicy(
+            actor,
+            critic,
+            optim,
+            Categorical,
+            args.gamma,
+        ) # TODO add support for additional hyperparameters
+        if args.resume_path:
+            agent_learn.load_state_dict(torch.load(args.resume_path))
+
+
     elif agent_learn == 'random':
         agent_learn = RandomPolicy()
 
@@ -183,8 +255,8 @@ def get_agents(
             target_update_freq=args.target_update_freq,
         )
         if args.resume_path:
-            #print(f"Loading pretrained DQN model from {args.resume_path}")
-            agent_opponent.load_state_dict(torch.load(args.resume_path))
+            # print(f"Loading pretrained opponent DQN model from {args.opponent_path}")
+            agent_opponent.load_state_dict(torch.load(args.opponent_path))
 
     elif agent_opponent == 'reinforce':
         # model
@@ -203,7 +275,47 @@ def get_agents(
             args.gamma,
         ) # TODO add support for additional hyperparameters
         if args.resume_path:
-            agent_opponent.load_state_dict(torch.load(args.resume_path))
+            agent_opponent.load_state_dict(torch.load(args.opponent_path))
+
+    elif agent_opponent == 'ppo':
+        # model
+        actor_net = Net(
+            args.state_shape,
+            args.action_shape,
+            hidden_sizes=args.hidden_sizes,
+            device=args.device,
+        )
+
+        critic_net = Net(
+            args.state_shape,
+            args.action_shape,
+            hidden_sizes=args.hidden_sizes,
+            device=args.device,
+        )
+
+        actor = Actor(
+            preprocess_net=actor_net,
+            action_shape=5,
+        ).to(args.device)
+
+        critic = Critic(
+            preprocess_net=critic_net,
+            device=args.device,
+        ).to(args.device)
+
+        # TODO there might be some manual weight initialization strategies that work better here
+        if optim is None:
+            optim = torch.optim.Adam(net.parameters(), lr=args.lr)
+
+        agent_opponent = PPOPolicy(
+            actor,
+            critic,
+            optim,
+            Categorical,
+            args.gamma,
+        ) # TODO add support for additional hyperparameters
+        if args.resume_path:
+            agent_opponent.load_state_dict(torch.load(args.opponent_path))
 
     elif agent_opponent == 'random':
         agent_opponent = RandomPolicy()
@@ -212,14 +324,12 @@ def get_agents(
         agents = [agent_learn, agent_opponent]
     else:
         agents = [agent_opponent, agent_learn]
-    # print(agents)
     policy = MultiAgentPolicyManager(agents, env)
     return policy, optim, env.agents
 
 
 def get_env(render_mode=None):
     return PettingZooEnv(gsg_environment.env(render_mode=render_mode))
-
 
 def train_agent(
     args: argparse.Namespace = get_args(),
@@ -316,15 +426,24 @@ def watch(
     agent_opponent: Optional[BasePolicy] = None,
 ) -> None:
     env = DummyVectorEnv([lambda: get_env(render_mode="human")])
+
+    if not agent_learn:
+        agent_learn = args.agent_learn
+    if not agent_opponent:
+        agent_opponent = args.agent_opponent
+
     policy, optim, agents = get_agents(
         args, agent_learn=agent_learn, agent_opponent=agent_opponent
     )
     policy.eval()
     policy.policies[agents[args.agent_id]].set_eps(args.eps_test)
     collector = Collector(policy, env, exploration_noise=True)
+    
+    if args.eval_only:
+        result = collector.collect(n_episode=1, render=args.render)
+    else:
+        result = collector.collect(n_episode=1)
 
-    # result = collector.collect(n_episode=1, render=args.render)
-    result = collector.collect(n_episode=1)
     rews, lens = result["rews"], result["lens"]
     print(f"Final reward: {rews[:, args.agent_id].mean()}, length: {lens.mean()}")
 
@@ -333,5 +452,10 @@ if __name__ == "__main__":
     # train the agent and watch its performance in a match!
     torch.set_default_dtype(torch.float32)
     args = get_args()
-    result, agent_learned, agent_opp = train_agent(args)
-    watch(args, agent_learned, agent_opp)
+    if args.eval_only:
+        assert args.resume_path is not None
+        assert args.opponent_path is not None
+        watch(args)
+    else:
+        result, agent_learned, agent_opp = train_agent(args)
+        watch(args, agent_learned, agent_opp)
