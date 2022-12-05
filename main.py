@@ -30,7 +30,9 @@ from tianshou.utils.net.discrete import Actor, Critic
 from torch.utils.tensorboard import SummaryWriter
 from torch.distributions.categorical import Categorical
 
-from GSGEnvironment.gsg_environment import gsg_environment
+# updated environment
+# from GSGEnvironment.gsg_environment import gsg_environment_v2 as gsg_environment
+from GSGEnvironment.gsg_environment import gsg_environment_v3 as gsg_environment
 faulthandler.enable()
 
 class Agent(nn.Module):
@@ -325,6 +327,8 @@ def get_agents(
     else:
         agents = [agent_opponent, agent_learn]
     policy = MultiAgentPolicyManager(agents, env)
+    #import pdb
+    #pdb.set_trace()
     return policy, optim, env.agents
 
 
@@ -437,13 +441,17 @@ def watch(
     )
     policy.eval()
     policy.policies[agents[args.agent_id]].set_eps(args.eps_test)
+    #policy.policies[agents[args.agent_id-1]].set_eps(args.eps_test)
     collector = Collector(policy, env, exploration_noise=True)
-    
+
     if args.eval_only:
+        #collector = Collector(policy, env, exploration_noise=False)
         result = collector.collect(n_episode=1, render=args.render)
     else:
+        #collector = Collector(policy, env, exploration_noise=True)
         result = collector.collect(n_episode=1)
-
+    #import pdb
+    #pdb.set_trace()
     rews, lens = result["rews"], result["lens"]
     print(f"Final reward: {rews[:, args.agent_id].mean()}, length: {lens.mean()}")
 

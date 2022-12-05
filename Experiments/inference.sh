@@ -1,5 +1,6 @@
-RESUME_PATH=Experiments/dqn_fast_2_converged/ranger/gsg/dqn/policy.pth
-OPPONENT_PATH=Experiments/dqn_fast_2_converged/poacher/gsg/dqn/policy.pth
+BASE_PATH=$1
+RESUME_PATH=${BASE_PATH}/ranger/gsg/dqn/policy.pth #Experiments/dqn_fast_2_converged/ranger/gsg/dqn/policy.pth
+OPPONENT_PATH=${BASE_PATH}/poacher/gsg/dqn/policy.pth #Experiments/dqn_fast_2_converged/poacher/gsg/dqn/policy.pth
 LEARN_ALG=dqn
 OPP_ALG=dqn
 

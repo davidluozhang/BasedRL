@@ -16,7 +16,7 @@ NUM_COLS = 4
 POACHER_INIT_X = 0
 POACHER_INIT_Y = 0
 POACHER_NUM_TRAPS = 5
-POACHER_CATCH_REWARD = 0.5
+POACHER_CATCH_REWARD = 2
 POACHER_CAUGHT_PENALTY = -20
 
 RANGER_INIT_X = 3
@@ -24,8 +24,7 @@ RANGER_INIT_Y = 3
 RANGER_TRAP_REWARD = 1
 RANGER_CATCH_REWARD = 20
 RANGER_TIME_PENALTY = 0.3
-TIMEOUT = 100
-
+TIMEOUT = 300
 
 def env(render_mode=None):
     internal_render_mode = render_mode if render_mode != "ansi" else "human"

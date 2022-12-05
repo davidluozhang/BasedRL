@@ -15,8 +15,9 @@ NUM_ROWS = 4
 NUM_COLS = 4
 POACHER_INIT_X = 0
 POACHER_INIT_Y = 0
-POACHER_CATCH_REWARD = 2 
+POACHER_CATCH_REWARD = 2
 POACHER_CAUGHT_PENALTY = -20
+ANIMAL_DECREASE=0.5
 
 RANGER_INIT_X = 3
 RANGER_INIT_Y = 3
@@ -24,7 +25,7 @@ RANGER_TRAP_REWARD = 1
 RANGER_CATCH_REWARD = 20
 RANGER_TIME_PENALTY = 0.3
 TIMEOUT = 300
-FOOTSTEP_VANISH_TIME = 10 
+FOOTSTEP_VANISH_TIME = 30
 OBSTACLES = []
 PROXIMITY_DISTANCE = 2
 
@@ -58,29 +59,29 @@ class CustomEnvironment(AECEnv):
                 "observation": spaces.Box(
                     low=0, high=1, shape=(NUM_ROWS, NUM_COLS, 2), dtype=np.int8
                 ),
-                "action_mask": spaces.Discrete(4),
+                "action_mask": spaces.Discrete(5),
             }),
             "poacher": spaces.Dict({
                 "observation": spaces.Box(
                     low=0, high=1, shape=(NUM_ROWS, NUM_COLS, 2), dtype=np.int8
                 ),
-                "action_mask": spaces.Discrete(4),
+                "action_mask": spaces.Discrete(5),
             }),
         }
 
         self.action_spaces = {
-            "ranger": spaces.Discrete(4),
-            "poacher": spaces.Discrete(4),
+            "ranger": spaces.Discrete(5),
+            "poacher": spaces.Discrete(5),
         }
 
         self.grid = []
         random.seed(123)
         for i in range(NUM_ROWS):
-            row = [{'animal_density': random.random(), 'ranger_vis': [], 'poacher_vis': [], 'obstacle': False} for
+            row = [{'animal_density': random.uniform(2, 5), 'ranger_vis': [], 'poacher_vis': [], 'obstacle': False} for
                    _ in range(NUM_COLS)]
             self.grid.append(row)
 
-        ##TODO: POPULATE OBSTACLES W/ VARIABLE 
+        ##TODO: POPULATE OBSTACLES W/ VARIABLE
 
         self.possible_agents = ["poacher", "ranger"]
         self.agents = self.possible_agents[:]
@@ -104,19 +105,19 @@ class CustomEnvironment(AECEnv):
         # cur_p_board = np.equal(board_vals, cur_player + 1)
         # opp_p_board = np.equal(board_vals, opp_player + 1)
         def check_obstacles(y, x, action_mask):
-            for i, j in OBSTACLES: #i is x, j is y 
+            for i, j in OBSTACLES: #i is x, j is y
                 if x - 1 == i:
-                    action_mask[0] = 0 #block left movement 
-                if x + 1 == i: 
-                    action_mask[1] = 0 #block right mvmt 
-                if y - 1 == j: 
-                    action_mask[2] = 0 #block down mvmt 
+                    action_mask[0] = 0 #block left movement
+                if x + 1 == i:
+                    action_mask[1] = 0 #block right mvmt
+                if y - 1 == j:
+                    action_mask[2] = 0 #block down mvmt
                 if y + 1 == j:
-                    action_mask[3] = 0 #block up mvmt 
-            return action_mask 
+                    action_mask[3] = 0 #block up mvmt
+            return action_mask
 
         # observation = np.stack([cur_p_board, opp_p_board], axis=2).astype(np.int8)
-        action_mask = np.ones(4) #current actions you can take 
+        action_mask = np.ones(5) #current actions you can take
         if agent == 'poacher':
             if self.poacher_x == 0:
                 action_mask[0] = 0  # block left movement
@@ -138,6 +139,7 @@ class CustomEnvironment(AECEnv):
             elif self.ranger_y == NUM_ROWS - 1:
                 action_mask[3] = 0  # block up movement
             action_mask = check_obstacles(self.ranger_y, self.ranger_x, action_mask)
+            action_mask[-1] = 0 # placeholder action
 
         # ranger_steps = []  # this might be rlly jank
         # poacher_steps = []  # this might be rlly jank
@@ -153,12 +155,15 @@ class CustomEnvironment(AECEnv):
         # # observation = (observation)
         observation = self.get_observations()
         observations = {
-            "ranger": {"observation": observation, "action_mask": np.zeros(4)},
-            "poacher": {"observation": observation, "action_mask": np.zeros(4)},
+            "ranger": {"observation": observation, "action_mask": np.zeros(5)},
+            "poacher": {"observation": observation, "action_mask": np.zeros(5)},
         }
 
         if agent == 'poacher':
             observations["poacher"]["action_mask"] = action_mask
+            #print(f"poacher pos: {self.poacher_y} {self.poacher_x}")
+            #print("action mask")
+            #print(action_mask)
 
         elif agent == 'ranger':
             observations["ranger"]["action_mask"] = action_mask
@@ -174,7 +179,7 @@ class CustomEnvironment(AECEnv):
         self.infos = {i: {} for i in self.agents}  # TODO maybe actually use infos
         self.poacher_x = POACHER_INIT_X
         self.poacher_y = POACHER_INIT_Y
-        self.poacher_traps = POACHER_NUM_TRAPS
+        #self.poacher_traps = POACHER_NUM_TRAPS
 
         self.ranger_x = RANGER_INIT_X
         self.ranger_y = RANGER_INIT_Y
@@ -183,12 +188,12 @@ class CustomEnvironment(AECEnv):
         self._agent_selector.reset()
         self.agent_selection = self._agent_selector.reset()
         self.timestep = 0
-        #clear grid 
+        #clear grid
         for i in range(NUM_ROWS):
             for j in range(NUM_COLS):
                 # self.grid[i][j]['has_trap'] = False
                 self.grid[i][j]['ranger_vis'] = []
-                self.grid[i][j]['poacher_vs'] = []
+                self.grid[i][j]['poacher_vis'] = []
         '''
         observation = []  # this might be rlly jank
 
@@ -214,6 +219,9 @@ class CustomEnvironment(AECEnv):
         if (self.terminations[self.agent_selection] or self.truncations[self.agent_selection]):
             return self._was_dead_step(action)
 
+        self.rewards["poacher"] = 0
+        self.rewards["ranger"] = 0
+
         # 0, 1, 2, 3
         # ToDo: Add an option for no movement?
         if self.agent_selection == 'ranger':
@@ -236,6 +244,10 @@ class CustomEnvironment(AECEnv):
                 self.poacher_y -= 1
             elif action == 3 and self.poacher_y < NUM_COLS - 1:
                 self.poacher_y += 1
+            elif action == 4:
+                self.rewards["poacher"] += self.grid[self.poacher_y][self.poacher_x]['animal_density'] #self.get_poacher_reward()
+                self.grid[self.poacher_y][self.poacher_x]['animal_density'] -= ANIMAL_DECREASE
+                self.grid[self.poacher_y][self.poacher_x]['animal_density'] = max(self.grid[self.poacher_y][self.poacher_x]['animal_density'], -3)
             # elif action == 4 and self.poacher_traps > 0:
             #     self.grid[self.poacher_y][self.poacher_x]['has_trap'] = True
             #     self.poacher_traps -= 1
@@ -256,11 +268,11 @@ class CustomEnvironment(AECEnv):
         #     self.rewards["ranger"] += RANGER_TRAP_REWARD
 
         # Reward poacher for placed traps and survival
-        self.rewards["poacher"] += self.get_poacher_reward()
-        # self.rewards["poacher"] += RANGER_TIME_PENALTY
+        # self.rewards["poacher"] += self.get_poacher_reward()
+        self.rewards["poacher"] += RANGER_TIME_PENALTY
 
         # Penalize ranger for time delay and caught animals
-        self.rewards["ranger"] -= self.get_poacher_reward()
+        # self.rewards["ranger"] -= self.get_poacher_reward()
         self.rewards["ranger"] -= RANGER_TIME_PENALTY
         self.timestep += 1
 
@@ -278,22 +290,22 @@ class CustomEnvironment(AECEnv):
         self._accumulate_rewards()
         # if self.render_mode == "human" and self.agent_selection == 'poacher':
         #    self.render()
-    
+
     def get_observations(self, proximity = False):
-        #checks proximity of grid cell with agent 
+        #checks proximity of grid cell with agent
         def distance_apart(x, y, agent_x, agent_y, maxDistance):
             return abs(x-agent_x) <= maxDistance and abs(y-agent_y) <= maxDistance
 
         def check_footstep(y, x, proximity=False, isRanger = True):
             agent = 'ranger_vis' if isRanger else 'poacher_vis'
-            #get coordinates of the agent 
-            agent_x = self.ranger_x if isRanger else self.poacher_x 
+            #get coordinates of the agent
+            agent_x = self.ranger_x if isRanger else self.poacher_x
             agent_y = self.ranger_y if isRanger else self.poacher_y
-            if self.grid[y][x][agent].length > 0:
+            if len(self.grid[y][x][agent]) > 0:
                 if self.timestep - self.grid[y][x][agent][-1] < FOOTSTEP_VANISH_TIME:
                     if proximity and not distance_apart(x, y, agent_x, agent_y, PROXIMITY_DISTANCE):
-                        return 0 ##if proximity is enabled and it's too far out of range 
-                    return 1 
+                        return 0 ##if proximity is enabled and it's too far out of range
+                    return 1
             return 0
         ranger_steps = []
         poacher_steps = []
@@ -309,12 +321,13 @@ class CustomEnvironment(AECEnv):
 
     # ToDo: Penalize the poacher for how many traps it puts down to prevent spamming
     def get_poacher_reward(self):
-        return POACHER_CATCH_REWARD if random.random() < self.grid[self.poacher_y][self.poacher_x][
-                        'animal_density'] else 0
+        return POACHER_CATCH_REWARD * self.grid[self.poacher_y][self.poacher_x]['animal_density'] #if random.random() < self.grid[self.poacher_y][self.poacher_x]['animal_density'] else 0
+
     def render(self):
-        grid = [['0'] * NUM_COLS for _ in range(NUM_ROWS)]
-        grid[self.poacher_y][self.poacher_x] = "P"
-        grid[self.ranger_y][self.ranger_x] = "R"
+        #grid = [['0'] * NUM_COLS for _ in range(NUM_ROWS)]
+        grid = [[self.grid[row][col]['animal_density'] for col in range(NUM_COLS)] for row in range(NUM_ROWS)]
+        grid[self.poacher_y][self.poacher_x] = f"P: {self.grid[self.poacher_y][self.poacher_x]['animal_density']}"
+        grid[self.ranger_y][self.ranger_x] = f"R: {self.grid[self.ranger_y][self.ranger_x]['animal_density']}"
         print("=" * 10)
         for y in range(NUM_COLS):
             # for x in range(NUM_ROWS):
