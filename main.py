@@ -456,7 +456,8 @@ def watch(
 
     if args.eval_only:
         #collector = Collector(policy, env, exploration_noise=False)
-        result = collector.collect(n_episode=1, render=args.render)
+        result = collector.collect(n_episode=1, render=0.1)
+        # result = collector.collect(n_episode=1)
     else:
         #collector = Collector(policy, env, exploration_noise=True)
         result = collector.collect(n_episode=100)
