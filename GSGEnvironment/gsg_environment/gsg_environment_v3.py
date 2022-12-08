@@ -13,7 +13,7 @@ from pettingzoo.utils import agent_selector, wrappers
 # Global vars
 NUM_ROWS = 4
 NUM_COLS = 4
-POACHER_INIT_X = 0
+POACHER_INIT_X = 3
 POACHER_INIT_Y = 0
 POACHER_CATCH_REWARD = 2
 POACHER_CAUGHT_PENALTY = -20
@@ -25,7 +25,7 @@ RANGER_TRAP_REWARD = 1
 RANGER_CATCH_REWARD = 20
 RANGER_TIME_PENALTY = 0.3
 TIMEOUT = 300
-FOOTSTEP_VANISH_TIME = 30
+FOOTSTEP_VANISH_TIME = 10
 OBSTACLES = []
 PROXIMITY_DISTANCE = 2
 
@@ -57,13 +57,13 @@ class CustomEnvironment(AECEnv):
         self.observation_spaces = {
             "ranger": spaces.Dict({
                 "observation": spaces.Box(
-                    low=0, high=1, shape=(NUM_ROWS, NUM_COLS, 2), dtype=np.int8
+                    low=0, high=1, shape=(NUM_ROWS, NUM_COLS, 3), dtype=np.int8
                 ),
                 "action_mask": spaces.Discrete(5),
             }),
             "poacher": spaces.Dict({
                 "observation": spaces.Box(
-                    low=0, high=1, shape=(NUM_ROWS, NUM_COLS, 2), dtype=np.int8
+                    low=0, high=1, shape=(NUM_ROWS, NUM_COLS, 3), dtype=np.int8
                 ),
                 "action_mask": spaces.Discrete(5),
             }),
@@ -79,6 +79,7 @@ class CustomEnvironment(AECEnv):
         for i in range(NUM_ROWS):
             row = [{'animal_density': random.uniform(2, 5), 'ranger_vis': [], 'poacher_vis': [], 'obstacle': False} for
                    _ in range(NUM_COLS)]
+
             self.grid.append(row)
 
         ##TODO: POPULATE OBSTACLES W/ VARIABLE
@@ -305,10 +306,11 @@ class CustomEnvironment(AECEnv):
                 if self.timestep - self.grid[y][x][agent][-1] < FOOTSTEP_VANISH_TIME:
                     if proximity and not distance_apart(x, y, agent_x, agent_y, PROXIMITY_DISTANCE):
                         return 0 ##if proximity is enabled and it's too far out of range
-                    return 1
+                    return self.timestep
             return 0
         ranger_steps = []
         poacher_steps = []
+        animal_densities = []
         for i in range(NUM_ROWS):
             ranger_steps.append(
                 [check_footstep(i, j, isRanger=True) for j in range(NUM_COLS)]
@@ -316,7 +318,10 @@ class CustomEnvironment(AECEnv):
             poacher_steps.append(
                 [check_footstep(i, j, isRanger=False) for j in range(NUM_COLS)]
             )
-        return np.stack([np.array(ranger_steps), np.array(poacher_steps)], axis=2).astype(np.int8)
+            animal_densities.append(
+                [self.grid[i][j]['animal_density'] for j in range(NUM_COLS)]
+            )
+        return np.stack([np.array(ranger_steps), np.array(poacher_steps), np.array(animal_densities)], axis=2).astype(np.int8)
         # observation = (observation)
 
     # ToDo: Penalize the poacher for how many traps it puts down to prevent spamming
@@ -324,8 +329,8 @@ class CustomEnvironment(AECEnv):
         return POACHER_CATCH_REWARD * self.grid[self.poacher_y][self.poacher_x]['animal_density'] #if random.random() < self.grid[self.poacher_y][self.poacher_x]['animal_density'] else 0
 
     def render(self):
-        #grid = [['0'] * NUM_COLS for _ in range(NUM_ROWS)]
-        grid = [[self.grid[row][col]['animal_density'] for col in range(NUM_COLS)] for row in range(NUM_ROWS)]
+        grid = [['0'] * NUM_COLS for _ in range(NUM_ROWS)]
+        #grid = [[self.grid[row][col]['animal_density'] for col in range(NUM_COLS)] for row in range(NUM_ROWS)]
         grid[self.poacher_y][self.poacher_x] = f"P: {self.grid[self.poacher_y][self.poacher_x]['animal_density']}"
         grid[self.ranger_y][self.ranger_x] = f"R: {self.grid[self.ranger_y][self.ranger_x]['animal_density']}"
         print("=" * 10)

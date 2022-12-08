@@ -4,4 +4,4 @@ OPPONENT_PATH=${BASE_PATH}/poacher/gsg/dqn/policy.pth #Experiments/dqn_fast_2_co
 LEARN_ALG=dqn
 OPP_ALG=dqn
 
-python main.py --eval_only --resume-path ${RESUME_PATH} --opponent-path ${OPPONENT_PATH} --agent-learn ${LEARN_ALG} --agent-opponent ${OPP_ALG}
+python main.py --eval_only --resume-path ${RESUME_PATH} --opponent-path ${OPPONENT_PATH} --agent-learn ${LEARN_ALG} --agent-opponent ${OPP_ALG} --agent-id 1

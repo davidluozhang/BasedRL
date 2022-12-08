@@ -64,17 +64,17 @@ class Agent(nn.Module):
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=1626)
-    parser.add_argument("--eps-test", type=float, default=0.05)
+    parser.add_argument("--eps-test", type=float, default=0.15)
     parser.add_argument("--eps-train", type=float, default=0.1)
     parser.add_argument("--buffer-size", type=int, default=20000)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument(
-        "--gamma", type=float, default=0.9, help="a smaller gamma favors earlier win"
+        "--gamma", type=float, default=0.99, help="a smaller gamma favors earlier win"
     )
     parser.add_argument("--n-step", type=int, default=3)
-    parser.add_argument("--target-update-freq", type=int, default=320)
+    parser.add_argument("--target-update-freq", type=int, default=50)
     parser.add_argument("--epoch", type=int, default=50)
-    parser.add_argument("--step-per-epoch", type=int, default=10000)
+    parser.add_argument("--step-per-epoch", type=int, default=1000)
     parser.add_argument("--step-per-collect", type=int, default=10)
     parser.add_argument("--update-per-step", type=float, default=0.3)
     parser.add_argument("--batch-size", type=int, default=64)
@@ -84,6 +84,7 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument("--training-num", type=int, default=10)
     parser.add_argument("--test-num", type=int, default=10)
     parser.add_argument("--logdir", type=str, default="log")
+    parser.add_argument("--iter", type=str, default="", help="jank")
     parser.add_argument("--render", type=float, default=0.1)
     parser.add_argument(
         "--win-rate",
@@ -166,12 +167,14 @@ def get_agents(
         ).to(args.device)
         if optim is None:
             optim = torch.optim.Adam(net.parameters(), lr=args.lr)
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=10)
         agent_learn = DQNPolicy(
             net,
             optim,
             args.gamma,
             args.n_step,
             target_update_freq=args.target_update_freq,
+            lr_scheduler=scheduler,
         )
         if args.resume_path:
             agent_learn.load_state_dict(torch.load(args.resume_path))
@@ -186,6 +189,7 @@ def get_agents(
         ).to(args.device)
         if optim is None:
             optim = torch.optim.Adam(net.parameters(), lr=args.lr)
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=10)
         agent_learn = PGPolicy(
             net,
             optim,
@@ -223,7 +227,7 @@ def get_agents(
 
         # TODO there might be some manual weight initialization strategies that work better here
         if optim is None:
-            optim = torch.optim.Adam(net.parameters(), lr=args.lr)
+            optim = torch.optim.Adam(list(actor.parameters()) + list(critic.parameters()), lr=args.lr)
 
         agent_learn = PPOPolicy(
             actor,
@@ -234,7 +238,6 @@ def get_agents(
         ) # TODO add support for additional hyperparameters
         if args.resume_path:
             agent_learn.load_state_dict(torch.load(args.resume_path))
-
 
     elif agent_learn == 'random':
         agent_learn = RandomPolicy()
@@ -249,12 +252,15 @@ def get_agents(
         ).to(args.device)
         if optim is None:
             optim = torch.optim.Adam(net.parameters(), lr=args.lr)
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=10)
+
         agent_opponent = DQNPolicy(
             net,
             optim,
             args.gamma,
             args.n_step,
             target_update_freq=args.target_update_freq,
+            lr_scheduler=scheduler,
         )
         if args.resume_path:
             # print(f"Loading pretrained opponent DQN model from {args.opponent_path}")
@@ -307,7 +313,7 @@ def get_agents(
 
         # TODO there might be some manual weight initialization strategies that work better here
         if optim is None:
-            optim = torch.optim.Adam(net.parameters(), lr=args.lr)
+            optim = torch.optim.Adam(list(actor.parameters()) + list(critic.parameters()), lr=args.lr)
 
         agent_opponent = PPOPolicy(
             actor,
@@ -357,6 +363,8 @@ def train_agent(
         args, agent_learn=agent_learn, agent_opponent=agent_opponent, optim=optim
     )
 
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=10)
+
     # ======== collector setup =========
     train_collector = Collector(
         policy,
@@ -366,14 +374,16 @@ def train_agent(
     )
     test_collector = Collector(policy, test_envs, exploration_noise=True)
     # policy.set_eps(1)
+    #import pdb
+    #pdb.set_trace()
     train_collector.collect(n_step=args.batch_size * args.training_num)
 
     # ======== tensorboard logging setup =========
-    log_path = os.path.join(args.logdir, "gsg", args.agent_learn)
+    log_path = os.path.join(args.logdir, "gsg", args.agent_learn, args.iter)
     print(f"tensorboard log path: {log_path}")
     writer = SummaryWriter(log_path)
     writer.add_text("args", str(args))
-    logger = TensorboardLogger(writer)
+    logger = TensorboardLogger(writer, train_interval=100)
 
     # ======== callback functions used during training =========
     def save_best_fn(policy):
@@ -449,7 +459,7 @@ def watch(
         result = collector.collect(n_episode=1, render=args.render)
     else:
         #collector = Collector(policy, env, exploration_noise=True)
-        result = collector.collect(n_episode=1)
+        result = collector.collect(n_episode=100)
     #import pdb
     #pdb.set_trace()
     rews, lens = result["rews"], result["lens"]
