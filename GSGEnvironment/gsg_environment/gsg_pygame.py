@@ -116,7 +116,7 @@ class CustomEnvironment(AECEnv):
             self.clock = pygame.time.Clock()
             self.cell_size = (CELLSIZE, CELLSIZE)
 
-            bg_name = path.join(path.dirname(__file__), "img/board.png")
+            bg_name = path.join(path.dirname(__file__), "img/board2.png")
             self.bg_image = pygame.transform.scale(
                 pygame.image.load(bg_name), self.BOARD_SIZE
             )
