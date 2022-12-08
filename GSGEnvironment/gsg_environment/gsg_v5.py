@@ -418,10 +418,9 @@ class CustomEnvironment(AECEnv):
             elif self.render_mode == "rgb_array":
                 self.window_surface = pygame.Surface(self.BOARD_SIZE)
         self.window_surface.blit(self.bg_image, (0, 0))
-        for y in NUM_ROWS:
-            for x in NUM_COLS:
+        for y in range(NUM_ROWS):
+            for x in range(NUM_COLS):
                 #change the color of the background
-                
                 if self.grid[y][x]['animal_density'] < 0:
                     self.window_surface.blit(self.piece_images["negative"], (y * CELLSIZE, x * CELLSIZE))
                 elif self.grid[y][x]['animal_density'] < 2:
@@ -439,7 +438,6 @@ class CustomEnvironment(AECEnv):
             self.window_surface.blit(self.piece_images["bushes"], (y * CELLSIZE, x * CELLSIZE))
         self.window_surface.blit(self.piece_images["poacher"], (self.poacher_y * CELLSIZE, self.poacher_x * CELLSIZE))
         self.window_surface.blit(self.piece_images["ranger"], (self.ranger_y * CELLSIZE, self.ranger_x * CELLSIZE))
-
         if self.render_mode == "human":
             pygame.event.pump()
             pygame.display.update()
