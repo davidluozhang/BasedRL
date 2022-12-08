@@ -116,7 +116,7 @@ class CustomEnvironment(AECEnv):
             self.clock = pygame.time.Clock()
             self.cell_size = (CELLSIZE, CELLSIZE)
 
-            bg_name = path.join(path.dirname(__file__), "img/blue.png")
+            bg_name = path.join(path.dirname(__file__), "img/board2.png")
             self.bg_image = pygame.transform.scale(
                 pygame.image.load(bg_name), self.BOARD_SIZE
             )
@@ -128,8 +128,8 @@ class CustomEnvironment(AECEnv):
                 )
 
             self.piece_images = {
-                "ranger": load_piece("blackcircle"),
-                "poacher": load_piece("whitecircle"),
+                "ranger": load_piece("ranger"),
+                "poacher": load_piece("poacher"),
             }
 
     def observe(self, agent):
