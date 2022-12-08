@@ -11,9 +11,10 @@ from gymnasium import spaces
 from pettingzoo.utils.env import AECEnv
 from pettingzoo.utils import agent_selector, wrappers
 
-# Global vars
+# Global vars - grid size
 NUM_ROWS = 4
-NUM_COLS = 4
+NUM_COLS = 4 
+
 POACHER_INIT_X = 3
 POACHER_INIT_Y = 0
 POACHER_CATCH_REWARD = 2
@@ -27,7 +28,7 @@ RANGER_CATCH_REWARD = 20
 RANGER_TIME_PENALTY = 0.3
 TIMEOUT = 300
 FOOTSTEP_VANISH_TIME = 10
-OBSTACLES = []
+OBSTACLES = [(2, 3), (1, 3)]
 PROXIMITY_DISTANCE = 2
 CELLSIZE = 50
 
@@ -115,8 +116,11 @@ class CustomEnvironment(AECEnv):
             self.window_surface = None
             self.clock = pygame.time.Clock()
             self.cell_size = (CELLSIZE, CELLSIZE)
-
-            bg_name = path.join(path.dirname(__file__), "img/board2.png")
+            if NUM_ROWS == 4:
+                bg_name = path.join(path.dirname(__file__), "img/board2.png")
+            elif NUM_ROWS == 8:
+                bg_name = path.join(path.dirname(__file__), "img/8x8.png")
+            
             self.bg_image = pygame.transform.scale(
                 pygame.image.load(bg_name), self.BOARD_SIZE
             )
@@ -130,6 +134,13 @@ class CustomEnvironment(AECEnv):
             self.piece_images = {
                 "ranger": load_piece("ranger"),
                 "poacher": load_piece("poacher"),
+                "bushes": load_piece("bushes"), 
+                "shade0": load_piece("shade0"), 
+                "shade1": load_piece("shade1"), 
+                "shade2": load_piece("shade2"), 
+                "shade3": load_piece("shade3"),
+                "negative": load_piece("negative"),  
+                "footsteps": load_piece("footsteps"), 
             }
 
     def observe(self, agent):
@@ -407,6 +418,25 @@ class CustomEnvironment(AECEnv):
             elif self.render_mode == "rgb_array":
                 self.window_surface = pygame.Surface(self.BOARD_SIZE)
         self.window_surface.blit(self.bg_image, (0, 0))
+        for y in NUM_ROWS:
+            for x in NUM_COLS:
+                #change the color of the background
+                
+                if self.grid[y][x]['animal_density'] < 0:
+                    self.window_surface.blit(self.piece_images["negative"], (y * CELLSIZE, x * CELLSIZE))
+                elif self.grid[y][x]['animal_density'] < 2:
+                    self.window_surface.blit(self.piece_images["shade0"], (y * CELLSIZE, x * CELLSIZE))
+                elif self.grid[y][x]['animal_density'] < 3:
+                    self.window_surface.blit(self.piece_images["shade1"], (y * CELLSIZE, x * CELLSIZE))
+                elif self.grid[y][x]['animal_density'] < 4:
+                    self.window_surface.blit(self.piece_images["shade2"], (y * CELLSIZE, x * CELLSIZE))
+                else:
+                    self.window_surface.blit(self.piece_images["shade3"], (y * CELLSIZE, x * CELLSIZE))
+
+                if self.timestep - self.grid[y][x]["ranger"][-1] < FOOTSTEP_VANISH_TIME or self.timestep - self.grid[y][x]["poacher"][-1] < FOOTSTEP_VANISH_TIME :
+                    self.window_surface.blit(self.piece_images["footsteps"], (y * CELLSIZE, x * CELLSIZE))
+        for x, y in OBSTACLES:
+            self.window_surface.blit(self.piece_images["bushes"], (y * CELLSIZE, x * CELLSIZE))
         self.window_surface.blit(self.piece_images["poacher"], (self.poacher_y * CELLSIZE, self.poacher_x * CELLSIZE))
         self.window_surface.blit(self.piece_images["ranger"], (self.ranger_y * CELLSIZE, self.ranger_x * CELLSIZE))
 
