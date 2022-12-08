@@ -29,6 +29,7 @@ from tianshou.utils.net.common import Net, ActorCritic
 from tianshou.utils.net.discrete import Actor, Critic
 from torch.utils.tensorboard import SummaryWriter
 from torch.distributions.categorical import Categorical
+from masked_ppo import MaskedPPO
 
 # updated environment
 # from GSGEnvironment.gsg_environment import gsg_environment_v2 as gsg_environment
@@ -65,7 +66,7 @@ class Agent(nn.Module):
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=1626)
-    parser.add_argument("--eps-test", type=float, default=0.15)
+    parser.add_argument("--eps-test", type=float, default=0.07)
     parser.add_argument("--eps-train", type=float, default=0.1)
     parser.add_argument("--buffer-size", type=int, default=20000)
     parser.add_argument("--lr", type=float, default=1e-4)
@@ -230,7 +231,7 @@ def get_agents(
         if optim is None:
             optim = torch.optim.Adam(list(actor.parameters()) + list(critic.parameters()), lr=args.lr)
 
-        agent_learn = PPOPolicy(
+        agent_learn = MaskedPPO(
             actor,
             critic,
             optim,
@@ -316,7 +317,7 @@ def get_agents(
         if optim is None:
             optim = torch.optim.Adam(list(actor.parameters()) + list(critic.parameters()), lr=args.lr)
 
-        agent_opponent = PPOPolicy(
+        agent_opponent = MaskedPPO(
             actor,
             critic,
             optim,
