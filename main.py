@@ -32,7 +32,8 @@ from torch.distributions.categorical import Categorical
 
 # updated environment
 # from GSGEnvironment.gsg_environment import gsg_environment_v2 as gsg_environment
-from GSGEnvironment.gsg_environment import gsg_environment_v3 as gsg_environment
+# from GSGEnvironment.gsg_environment import gsg_environment_v3 as gsg_environment
+from GSGEnvironment.gsg_environment import gsg_pygame as gsg_environment
 faulthandler.enable()
 
 class Agent(nn.Module):
@@ -456,7 +457,7 @@ def watch(
 
     if args.eval_only:
         #collector = Collector(policy, env, exploration_noise=False)
-        result = collector.collect(n_episode=1, render=0.1)
+        result = collector.collect(n_episode=1, render=0.05)
         # result = collector.collect(n_episode=1)
     else:
         #collector = Collector(policy, env, exploration_noise=True)

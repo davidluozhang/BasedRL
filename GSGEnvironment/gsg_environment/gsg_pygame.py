@@ -46,7 +46,7 @@ class CustomEnvironment(AECEnv):
         "render_modes": ["human", "ansi", "rgb_array"],
         "name": "gsg_environment",
         "is_parallelizable": False,
-        "render_fps": 1,
+        "render_fps": 5,
     }
 
     def __init__(self, render_mode="ansi"):
@@ -128,8 +128,8 @@ class CustomEnvironment(AECEnv):
                 )
 
             self.piece_images = {
-                "ranger": [load_piece("blackcircle")],
-                "poacher": [load_piece("whitecircle")],
+                "ranger": load_piece("blackcircle"),
+                "poacher": load_piece("whitecircle"),
             }
 
     def observe(self, agent):
@@ -247,6 +247,8 @@ class CustomEnvironment(AECEnv):
         }
         return observations
         '''
+        if self.render_mode == "human":
+            self.render()
 
     """
     Actions: two params of poacher and ranger
@@ -405,9 +407,8 @@ class CustomEnvironment(AECEnv):
             elif self.render_mode == "rgb_array":
                 self.window_surface = pygame.Surface(self.BOARD_SIZE)
         self.window_surface.blit(self.bg_image, (0, 0))
-
-        self.window_surface.blit(self.piece_images["ranger"], (self.ranger_y, self.ranger_x))
-        self.window_surface.blit(self.piece_images["poacher"], (self.poacher_y, self.poacher_x))
+        self.window_surface.blit(self.piece_images["poacher"], (self.poacher_y * CELLSIZE, self.poacher_x * CELLSIZE))
+        self.window_surface.blit(self.piece_images["ranger"], (self.ranger_y * CELLSIZE, self.ranger_x * CELLSIZE))
 
         if self.render_mode == "human":
             pygame.event.pump()
