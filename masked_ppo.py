@@ -10,6 +10,7 @@ from tianshou.data import Batch, ReplayBuffer, to_torch_as
 from tianshou.policy import A2CPolicy
 from tianshou.utils.net.common import ActorCritic
 
+
 class CategoricalMasked(torch.distributions.Categorical):
     def __init__(self, probs=None, logits=None, validate_args=None, masks=[]):
         self.device = logits.device
@@ -28,8 +29,10 @@ class CategoricalMasked(torch.distributions.Categorical):
         p_log_p = torch.where(self.masks, p_log_p, torch.tensor(0.).to(self.device))
         return -p_log_p.sum(-1)
 
+
 def dist(p, mask):
     return CategoricalMasked(logits=p, masks=mask)
+
 
 class MaskedPPO(A2CPolicy):
     r"""Implementation of Proximal Policy Optimization. arXiv:1707.06347.
@@ -83,17 +86,19 @@ class MaskedPPO(A2CPolicy):
     """
 
     def __init__(
-        self,
-        actor: torch.nn.Module,
-        critic: torch.nn.Module,
-        optim: torch.optim.Optimizer,
-        dist_fn: Type[torch.distributions.Distribution] = dist, 
-        eps_clip: float = 0.2,
-        dual_clip: Optional[float] = None,
-        value_clip: bool = False,
-        advantage_normalization: bool = True,
-        recompute_advantage: bool = False,
-        **kwargs: Any,
+            self,
+            actor: torch.nn.Module,
+            critic: torch.nn.Module,
+            optim: torch.optim.Optimizer,
+            dist_fn: Type[torch.distributions.Distribution] = dist,
+            eps_clip: float = 0.2,
+            dual_clip: Optional[float] = None,
+            value_clip: bool = False,
+            advantage_normalization: bool = True,
+            recompute_advantage: bool = False,
+            max_batchsize: int = 256,
+            repeat: int = 1,
+            **kwargs: Any,
     ) -> None:
         super().__init__(actor, critic, optim, dist_fn, **kwargs)
         self._eps_clip = eps_clip
@@ -101,17 +106,18 @@ class MaskedPPO(A2CPolicy):
             "Dual-clip PPO parameter should greater than 1.0."
         self._dual_clip = dual_clip
         self._value_clip = value_clip
+        self._batchsize = max_batchsize
+        self._repeat = repeat
         if not self._rew_norm:
             assert not self._value_clip, \
                 "value clip is available only when `reward_normalization` is True"
         self._norm_adv = advantage_normalization
         self._recompute_adv = recompute_advantage
         self._actor_critic: ActorCritic
-
         self.register_buffer("running_max", torch.zeros((1, 60, 48)))
 
     def process_fn(
-        self, batch: Batch, buffer: ReplayBuffer, indices: np.ndarray
+            self, batch: Batch, buffer: ReplayBuffer, indices: np.ndarray
     ) -> Batch:
         if self._recompute_adv:
             # buffer input `buffer` and `indices` to be used in `learn()`.
@@ -127,8 +133,10 @@ class MaskedPPO(A2CPolicy):
         return batch
 
     def learn(  # type: ignore
-        self, batch: Batch, batch_size: int, repeat: int, **kwargs: Any
+            self, batch: Batch, **kwargs: Any
     ) -> Dict[str, List[float]]:
+        batch_size = self._batchsize
+        repeat = self._repeat
         losses, clip_losses, vf_losses, ent_losses = [], [], [], []
         for step in range(repeat):
             if self._recompute_adv and step > 0:
@@ -160,7 +168,7 @@ class MaskedPPO(A2CPolicy):
                 value = self.critic(minibatch.obs.obs).flatten()
                 if self._value_clip:
                     v_clip = minibatch.v_s + \
-                        (value - minibatch.v_s).clamp(-self._eps_clip, self._eps_clip)
+                             (value - minibatch.v_s).clamp(-self._eps_clip, self._eps_clip)
                     vf1 = (minibatch.returns - value).pow(2)
                     vf2 = (minibatch.returns - v_clip).pow(2)
                     vf_loss = torch.max(vf1, vf2).mean()
@@ -169,7 +177,9 @@ class MaskedPPO(A2CPolicy):
                 # calculate regularization and overall loss
                 ent_loss = dist.entropy().mean()
                 loss = clip_loss + self._weight_vf * vf_loss \
-                    - self._weight_ent * ent_loss
+                       - self._weight_ent * ent_loss
+                #print(f"Loss Gradient: {loss.grad} \t Clip Loss Gradient: {clip_loss.grad}")
+                #print(f"Loss: {loss} \t Type: {type(loss)}")
                 self.optim.zero_grad()
                 loss.backward()
                 if self._grad_norm:  # clip large gradient
@@ -181,6 +191,7 @@ class MaskedPPO(A2CPolicy):
                 vf_losses.append(vf_loss.item())
                 ent_losses.append(ent_loss.item())
                 losses.append(loss.item())
+        print(losses)
         return {
             "loss": losses,
             "loss/clip": clip_losses,
@@ -189,7 +200,7 @@ class MaskedPPO(A2CPolicy):
         }
 
     def _compute_returns(
-        self, batch: Batch, buffer: ReplayBuffer, indices: np.ndarray
+            self, batch: Batch, buffer: ReplayBuffer, indices: np.ndarray
     ) -> Batch:
         v_s, v_s_ = [], []
         with torch.no_grad():
@@ -217,7 +228,7 @@ class MaskedPPO(A2CPolicy):
         )
         if self._rew_norm:
             batch.returns = unnormalized_returns / \
-                np.sqrt(self.ret_rms.var + self._eps)
+                            np.sqrt(self.ret_rms.var + self._eps)
             self.ret_rms.update(unnormalized_returns)
         else:
             batch.returns = unnormalized_returns
@@ -226,10 +237,10 @@ class MaskedPPO(A2CPolicy):
         return batch
 
     def forward(
-        self,
-        batch: Batch,
-        state: Optional[Union[dict, Batch, np.ndarray]] = None,
-        **kwargs: Any,
+            self,
+            batch: Batch,
+            state: Optional[Union[dict, Batch, np.ndarray]] = None,
+            **kwargs: Any,
     ) -> Batch:
         """Compute action over the given batch data.
 
@@ -263,3 +274,6 @@ class MaskedPPO(A2CPolicy):
             act = dist.sample()
         return Batch(logits=logits, act=act,
                      state=hidden, dist=dist)
+
+    def set_eps(self, eps):
+        pass

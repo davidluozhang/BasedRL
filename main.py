@@ -8,7 +8,8 @@ Requirements:
 pettingzoo == 1.22.0
 git+https://github.com/thu-ml/tianshou
 """
-
+#import pdb
+#pdb.set_trace()
 import argparse
 import os
 from copy import deepcopy
@@ -23,20 +24,17 @@ from tianshou.data import Collector, VectorReplayBuffer
 from tianshou.env import DummyVectorEnv
 from tianshou.env.pettingzoo_env import PettingZooEnv
 from tianshou.policy import BasePolicy, DQNPolicy, PGPolicy, PPOPolicy, MultiAgentPolicyManager, RandomPolicy
-from tianshou.trainer import offpolicy_trainer, onpolicy_trainer
+from tianshou.trainer import offpolicy_trainer
 from tianshou.utils import TensorboardLogger
 from tianshou.utils.net.common import Net, ActorCritic
 from tianshou.utils.net.discrete import Actor, Critic
 from torch.utils.tensorboard import SummaryWriter
 from torch.distributions.categorical import Categorical
-from masked_ppo import MaskedPPO, CategoricalMasked
+from masked_ppo import MaskedPPO, CategoricalMasked, dist
 
 # updated environment
 # from GSGEnvironment.gsg_environment import gsg_environment_v2 as gsg_environment
-# from GSGEnvironment.gsg_environment import gsg_environment_v3 as gsg_environment
-# from GSGEnvironment.gsg_environment import gsg_pygame as gsg_environment
-from GSGEnvironment.gsg_environment import gsg_v5 as gsg_environment
-
+from GSGEnvironment.gsg_environment import gsg_environment_v3 as gsg_environment
 faulthandler.enable()
 
 class Agent(nn.Module):
@@ -68,7 +66,7 @@ class Agent(nn.Module):
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=1626)
-    parser.add_argument("--eps-test", type=float, default=0.07)
+    parser.add_argument("--eps-test", type=float, default=0.15)
     parser.add_argument("--eps-train", type=float, default=0.1)
     parser.add_argument("--buffer-size", type=int, default=20000)
     parser.add_argument("--lr", type=float, default=1e-4)
@@ -79,7 +77,6 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-update-freq", type=int, default=50)
     parser.add_argument("--epoch", type=int, default=50)
     parser.add_argument("--step-per-epoch", type=int, default=1000)
-    parser.add_argument("--repeat-per-collect", type=int, default=10)
     parser.add_argument("--step-per-collect", type=int, default=10)
     parser.add_argument("--update-per-step", type=float, default=0.3)
     parser.add_argument("--batch-size", type=int, default=64)
@@ -139,6 +136,25 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--eval_only", action='store_true',
     )
+    # Hyperparameters added for PPO
+    parser.add_argument(
+        "--recompute_advantage", type=bool, default=False
+    )
+    parser.add_argument(
+        "--gae_lambda", type=float, default=.95
+    )
+    parser.add_argument(
+        "--vf_coef", type=float, default=.5
+    )
+    parser.add_argument(
+        "--ent_coef", type=float, default=.01
+    )
+    parser.add_argument(
+        "--eps_clip", type=float, default=.2
+    )
+
+
+
     return parser
 
 def get_args() -> argparse.Namespace:
@@ -198,7 +214,7 @@ def get_agents(
         agent_learn = PGPolicy(
             net,
             optim,
-            Categorical,
+            dist,
             args.gamma,
         ) # TODO add support for additional hyperparameters
         if args.resume_path:
@@ -238,10 +254,17 @@ def get_agents(
             actor,
             critic,
             optim,
+            dist,
             discount_factor=args.gamma,
+            eps_clip=args.eps_clip,
+            recompute_advantage=args.recompute_advantage,
+            gae_lambda=args.gae_lambda,
+            vf_coef=args.vf_coef,
+            ent_coef=args.ent_coef
         ) # TODO add support for additional hyperparameters
         if args.resume_path:
-            agent_learn.load_state_dict(torch.load(args.resume_path))
+            #print(torch.load(args.opponent_path).keys())
+            agent_learn.load_state_dict(torch.load(args.resume_path), strict=False)
 
     elif agent_learn == 'random':
         agent_learn = RandomPolicy()
@@ -323,10 +346,18 @@ def get_agents(
             actor,
             critic,
             optim,
+            dist,
             discount_factor=args.gamma,
+            eps_clip=args.eps_clip,
+            recompute_advantage=args.recompute_advantage,
+            gae_lambda=args.gae_lambda,
+            vf_coef=args.vf_coef,
+            ent_coef=args.ent_coef
         ) # TODO add support for additional hyperparameters
         if args.resume_path:
-            agent_opponent.load_state_dict(torch.load(args.opponent_path))
+            # breakpoint()
+            #print(torch.load(args.opponent_path).keys())
+            agent_opponent.load_state_dict(torch.load(args.opponent_path), strict=False)
 
     elif agent_opponent == 'random':
         agent_opponent = RandomPolicy()
@@ -405,53 +436,33 @@ def train_agent(
         return mean_rewards >= args.win_rate
 
     def train_fn(epoch, env_step):
-        if args.agent_learn == 'dqn':
-            policy.policies[agents[args.agent_id]].set_eps(args.eps_train)
+        policy.policies[agents[args.agent_id]].set_eps(args.eps_train)
 
     def test_fn(epoch, env_step):
-        if args.agent_learn == 'dqn':
-            policy.policies[agents[args.agent_id]].set_eps(args.eps_test)
+        policy.policies[agents[args.agent_id]].set_eps(args.eps_test)
 
     def reward_metric(rews):
         return rews[:, args.agent_id]
 
     # trainer
-    if args.agent_learn == 'dqn':
-        result = offpolicy_trainer(
-            policy,
-            train_collector,
-            test_collector,
-            args.epoch,
-            args.step_per_epoch,
-            args.step_per_collect,
-            args.test_num,
-            args.batch_size,
-            train_fn=train_fn,
-            test_fn=test_fn,
-            stop_fn=None,
-            save_best_fn=save_best_fn,
-            update_per_step=args.update_per_step,
-            logger=logger,
-            test_in_train=False,
-            reward_metric=reward_metric,
-        )
-    else:
-        result = onpolicy_trainer(
-            policy,
-            train_collector,
-            test_collector,
-            args.epoch,
-            args.step_per_epoch,
-            args.repeat_per_collect,
-            args.test_num,
-            args.batch_size,
-            step_per_collect=args.step_per_collect,
-            save_best_fn=save_best_fn,
-            update_per_step=args.update_per_step,
-            logger=logger,
-            test_in_train=False
-        )
-
+    result = offpolicy_trainer(
+        policy,
+        train_collector,
+        test_collector,
+        args.epoch,
+        args.step_per_epoch,
+        args.step_per_collect,
+        args.test_num,
+        args.batch_size,
+        train_fn=train_fn,
+        test_fn=test_fn,
+        stop_fn=None,
+        save_best_fn=save_best_fn,
+        update_per_step=args.update_per_step,
+        logger=logger,
+        test_in_train=False,
+        reward_metric=reward_metric,
+    )
 
     return result, policy.policies[agents[args.agent_id]], policy.policies[agents[args.agent_id-1]]
 
@@ -462,8 +473,7 @@ def watch(
     agent_learn: Optional[BasePolicy] = None,
     agent_opponent: Optional[BasePolicy] = None,
 ) -> None:
-    render_mode="human" if args.eval_only else "training"
-    env = DummyVectorEnv([lambda: get_env(render_mode=render_mode)])
+    env = DummyVectorEnv([lambda: get_env(render_mode="human")])
 
     if not agent_learn:
         agent_learn = args.agent_learn
@@ -474,14 +484,13 @@ def watch(
         args, agent_learn=agent_learn, agent_opponent=agent_opponent
     )
     policy.eval()
-    if args.agent_learn == 'dqn':
-        policy.policies[agents[args.agent_id]].set_eps(args.eps_test)
+    policy.policies[agents[args.agent_id]].set_eps(args.eps_test)
     #policy.policies[agents[args.agent_id-1]].set_eps(args.eps_test)
     collector = Collector(policy, env, exploration_noise=True)
 
     if args.eval_only:
         #collector = Collector(policy, env, exploration_noise=False)
-        result = collector.collect(n_episode=1, render=0.05)
+        result = collector.collect(n_episode=1, render=0.1)
         # result = collector.collect(n_episode=1)
     else:
         #collector = Collector(policy, env, exploration_noise=True)
