@@ -23,18 +23,20 @@ from tianshou.data import Collector, VectorReplayBuffer
 from tianshou.env import DummyVectorEnv
 from tianshou.env.pettingzoo_env import PettingZooEnv
 from tianshou.policy import BasePolicy, DQNPolicy, PGPolicy, PPOPolicy, MultiAgentPolicyManager, RandomPolicy
-from tianshou.trainer import offpolicy_trainer
+from tianshou.trainer import offpolicy_trainer, onpolicy_trainer
 from tianshou.utils import TensorboardLogger
 from tianshou.utils.net.common import Net, ActorCritic
 from tianshou.utils.net.discrete import Actor, Critic
 from torch.utils.tensorboard import SummaryWriter
 from torch.distributions.categorical import Categorical
-from masked_ppo import MaskedPPO
+from masked_ppo import MaskedPPO, CategoricalMasked
 
 # updated environment
 # from GSGEnvironment.gsg_environment import gsg_environment_v2 as gsg_environment
 # from GSGEnvironment.gsg_environment import gsg_environment_v3 as gsg_environment
-from GSGEnvironment.gsg_environment import gsg_pygame as gsg_environment
+# from GSGEnvironment.gsg_environment import gsg_pygame as gsg_environment
+from GSGEnvironment.gsg_environment import gsg_v5 as gsg_environment
+
 faulthandler.enable()
 
 class Agent(nn.Module):
@@ -77,6 +79,7 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-update-freq", type=int, default=50)
     parser.add_argument("--epoch", type=int, default=50)
     parser.add_argument("--step-per-epoch", type=int, default=1000)
+    parser.add_argument("--repeat-per-collect", type=int, default=10)
     parser.add_argument("--step-per-collect", type=int, default=10)
     parser.add_argument("--update-per-step", type=float, default=0.3)
     parser.add_argument("--batch-size", type=int, default=64)
@@ -235,8 +238,7 @@ def get_agents(
             actor,
             critic,
             optim,
-            Categorical,
-            args.gamma,
+            discount_factor=args.gamma,
         ) # TODO add support for additional hyperparameters
         if args.resume_path:
             agent_learn.load_state_dict(torch.load(args.resume_path))
@@ -321,8 +323,7 @@ def get_agents(
             actor,
             critic,
             optim,
-            Categorical,
-            args.gamma,
+            discount_factor=args.gamma,
         ) # TODO add support for additional hyperparameters
         if args.resume_path:
             agent_opponent.load_state_dict(torch.load(args.opponent_path))
@@ -404,33 +405,53 @@ def train_agent(
         return mean_rewards >= args.win_rate
 
     def train_fn(epoch, env_step):
-        policy.policies[agents[args.agent_id]].set_eps(args.eps_train)
+        if args.agent_learn == 'dqn':
+            policy.policies[agents[args.agent_id]].set_eps(args.eps_train)
 
     def test_fn(epoch, env_step):
-        policy.policies[agents[args.agent_id]].set_eps(args.eps_test)
+        if args.agent_learn == 'dqn':
+            policy.policies[agents[args.agent_id]].set_eps(args.eps_test)
 
     def reward_metric(rews):
         return rews[:, args.agent_id]
 
     # trainer
-    result = offpolicy_trainer(
-        policy,
-        train_collector,
-        test_collector,
-        args.epoch,
-        args.step_per_epoch,
-        args.step_per_collect,
-        args.test_num,
-        args.batch_size,
-        train_fn=train_fn,
-        test_fn=test_fn,
-        stop_fn=None,
-        save_best_fn=save_best_fn,
-        update_per_step=args.update_per_step,
-        logger=logger,
-        test_in_train=False,
-        reward_metric=reward_metric,
-    )
+    if args.agent_learn == 'dqn':
+        result = offpolicy_trainer(
+            policy,
+            train_collector,
+            test_collector,
+            args.epoch,
+            args.step_per_epoch,
+            args.step_per_collect,
+            args.test_num,
+            args.batch_size,
+            train_fn=train_fn,
+            test_fn=test_fn,
+            stop_fn=None,
+            save_best_fn=save_best_fn,
+            update_per_step=args.update_per_step,
+            logger=logger,
+            test_in_train=False,
+            reward_metric=reward_metric,
+        )
+    else:
+        result = onpolicy_trainer(
+            policy,
+            train_collector,
+            test_collector,
+            args.epoch,
+            args.step_per_epoch,
+            args.repeat_per_collect,
+            args.test_num,
+            args.batch_size,
+            step_per_collect=args.step_per_collect,
+            save_best_fn=save_best_fn,
+            update_per_step=args.update_per_step,
+            logger=logger,
+            test_in_train=False
+        )
+
 
     return result, policy.policies[agents[args.agent_id]], policy.policies[agents[args.agent_id-1]]
 
@@ -441,7 +462,8 @@ def watch(
     agent_learn: Optional[BasePolicy] = None,
     agent_opponent: Optional[BasePolicy] = None,
 ) -> None:
-    env = DummyVectorEnv([lambda: get_env(render_mode="human")])
+    render_mode="human" if args.eval_only else "training"
+    env = DummyVectorEnv([lambda: get_env(render_mode=render_mode)])
 
     if not agent_learn:
         agent_learn = args.agent_learn
@@ -452,7 +474,8 @@ def watch(
         args, agent_learn=agent_learn, agent_opponent=agent_opponent
     )
     policy.eval()
-    policy.policies[agents[args.agent_id]].set_eps(args.eps_test)
+    if args.agent_learn == 'dqn':
+        policy.policies[agents[args.agent_id]].set_eps(args.eps_test)
     #policy.policies[agents[args.agent_id-1]].set_eps(args.eps_test)
     collector = Collector(policy, env, exploration_noise=True)
 

@@ -10,6 +10,27 @@ from tianshou.data import Batch, ReplayBuffer, to_torch_as
 from tianshou.policy import A2CPolicy
 from tianshou.utils.net.common import ActorCritic
 
+class CategoricalMasked(torch.distributions.Categorical):
+    def __init__(self, probs=None, logits=None, validate_args=None, masks=[]):
+        self.device = logits.device
+        self.masks = masks
+        if len(self.masks) == 0:
+            super(CategoricalMasked, self).__init__(probs, logits, validate_args)
+        else:
+            self.masks = masks.type(torch.BoolTensor).to(self.device)
+            logits = torch.where(self.masks, logits, torch.tensor(-1e18).to(self.device))
+            super(CategoricalMasked, self).__init__(probs, logits, validate_args)
+
+    def entropy(self):
+        if len(self.masks) == 0:
+            return super(CategoricalMasked, self).entropy()
+        p_log_p = self.logits * self.probs
+        p_log_p = torch.where(self.masks, p_log_p, torch.tensor(0.).to(self.device))
+        return -p_log_p.sum(-1)
+
+def dist(p, mask):
+    return CategoricalMasked(logits=p, masks=mask)
+
 class MaskedPPO(A2CPolicy):
     r"""Implementation of Proximal Policy Optimization. arXiv:1707.06347.
 
@@ -66,7 +87,7 @@ class MaskedPPO(A2CPolicy):
         actor: torch.nn.Module,
         critic: torch.nn.Module,
         optim: torch.optim.Optimizer,
-        dist_fn: Type[torch.distributions.Distribution],
+        dist_fn: Type[torch.distributions.Distribution] = dist, 
         eps_clip: float = 0.2,
         dual_clip: Optional[float] = None,
         value_clip: bool = False,
@@ -228,8 +249,6 @@ class MaskedPPO(A2CPolicy):
         obs = batch.obs.obs
         logits, hidden = self.actor(obs, state=state)
         mask = torch.as_tensor(batch.obs.mask, dtype=bool, device=logits.device)
-        import pdb
-        pdb.set_trace()
 
         if isinstance(logits, tuple):
             dist = self.dist_fn(*logits)

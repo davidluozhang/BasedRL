@@ -28,9 +28,9 @@ RANGER_CATCH_REWARD = 20
 RANGER_TIME_PENALTY = 0.3
 TIMEOUT = 300
 FOOTSTEP_VANISH_TIME = 10
-OBSTACLES = [(2, 3), (1, 3)]
+OBSTACLES =  [] #[(2, 3), (1, 3)]
 PROXIMITY_DISTANCE = 2
-CELLSIZE = 50
+CELLSIZE = 200
 
 def env(render_mode=None):
     internal_render_mode = render_mode if render_mode != "ansi" else "human"
@@ -44,7 +44,7 @@ def env(render_mode=None):
 
 class CustomEnvironment(AECEnv):
     metadata = {
-        "render_modes": ["human", "ansi", "rgb_array"],
+        "render_modes": ["human", "ansi", "rgb_array", "training"],
         "name": "gsg_environment",
         "is_parallelizable": False,
         "render_fps": 5,
@@ -258,8 +258,6 @@ class CustomEnvironment(AECEnv):
         }
         return observations
         '''
-        if self.render_mode == "human":
-            self.render()
 
     """
     Actions: two params of poacher and ranger
@@ -418,8 +416,8 @@ class CustomEnvironment(AECEnv):
             elif self.render_mode == "rgb_array":
                 self.window_surface = pygame.Surface(self.BOARD_SIZE)
         self.window_surface.blit(self.bg_image, (0, 0))
-        for y in NUM_ROWS:
-            for x in NUM_COLS:
+        for y in range(NUM_ROWS):
+            for x in range(NUM_COLS):
                 #change the color of the background
                 
                 if self.grid[y][x]['animal_density'] < 0:
@@ -432,8 +430,9 @@ class CustomEnvironment(AECEnv):
                     self.window_surface.blit(self.piece_images["shade2"], (y * CELLSIZE, x * CELLSIZE))
                 else:
                     self.window_surface.blit(self.piece_images["shade3"], (y * CELLSIZE, x * CELLSIZE))
-
-                if self.timestep - self.grid[y][x]["ranger"][-1] < FOOTSTEP_VANISH_TIME or self.timestep - self.grid[y][x]["poacher"][-1] < FOOTSTEP_VANISH_TIME :
+                if len(self.grid[y][x]["ranger_vis"]) > 0 and self.timestep - self.grid[y][x]["ranger_vis"][-1] < FOOTSTEP_VANISH_TIME:
+                    self.window_surface.blit(self.piece_images["footsteps"], (y * CELLSIZE, x * CELLSIZE))
+                elif len(self.grid[y][x]["poacher_vis"]) > 0 and self.timestep - self.grid[y][x]["poacher_vis"][-1] < FOOTSTEP_VANISH_TIME:
                     self.window_surface.blit(self.piece_images["footsteps"], (y * CELLSIZE, x * CELLSIZE))
         for x, y in OBSTACLES:
             self.window_surface.blit(self.piece_images["bushes"], (y * CELLSIZE, x * CELLSIZE))
