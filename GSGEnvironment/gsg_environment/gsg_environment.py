@@ -241,7 +241,7 @@ class CustomEnvironment(AECEnv):
 
         # Reward poacher for placed traps and survival
         self.rewards["poacher"] += self.get_poacher_reward()
-        # self.rewards["poacher"] += RANGER_TIME_PENALTY
+        self.rewards["poacher"] += RANGER_TIME_PENALTY
 
         # Penalize ranger for time delay and caught animals
         self.rewards["ranger"] -= self.get_poacher_reward()

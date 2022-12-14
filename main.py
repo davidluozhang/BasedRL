@@ -24,13 +24,14 @@ from tianshou.data import Collector, VectorReplayBuffer
 from tianshou.env import DummyVectorEnv
 from tianshou.env.pettingzoo_env import PettingZooEnv
 from tianshou.policy import BasePolicy, DQNPolicy, PGPolicy, PPOPolicy, MultiAgentPolicyManager, RandomPolicy
-from tianshou.trainer import offpolicy_trainer
+from tianshou.trainer import offpolicy_trainer, onpolicy_trainer
 from tianshou.utils import TensorboardLogger
 from tianshou.utils.net.common import Net, ActorCritic
 from tianshou.utils.net.discrete import Actor, Critic
 from torch.utils.tensorboard import SummaryWriter
 from torch.distributions.categorical import Categorical
-from masked_ppo import MaskedPPO, CategoricalMasked, dist
+from masked_ppo import MaskedPPO, dist
+from masked_pg import MaskedPG
 
 # updated environment
 # from GSGEnvironment.gsg_environment import gsg_environment_v2 as gsg_environment
@@ -200,7 +201,7 @@ def get_agents(
         if args.resume_path:
             agent_learn.load_state_dict(torch.load(args.resume_path))
 
-    elif agent_learn == 'reinforce':
+    elif agent_learn == 'pg':
         # model
         net = Net(
             args.state_shape,
@@ -211,7 +212,7 @@ def get_agents(
         if optim is None:
             optim = torch.optim.Adam(net.parameters(), lr=args.lr)
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=10)
-        agent_learn = PGPolicy(
+        agent_learn = MaskedPG(
             net,
             optim,
             dist,
@@ -293,7 +294,7 @@ def get_agents(
             # print(f"Loading pretrained opponent DQN model from {args.opponent_path}")
             agent_opponent.load_state_dict(torch.load(args.opponent_path))
 
-    elif agent_opponent == 'reinforce':
+    elif agent_opponent == 'pg':
         # model
         net = Net(
             args.state_shape,
@@ -303,10 +304,10 @@ def get_agents(
         ).to(args.device)
         if optim is None:
             optim = torch.optim.Adam(net.parameters(), lr=args.lr)
-        agent_opponent = PGPolicy(
+        agent_opponent = MaskedPG(
             net,
             optim,
-            Categorical,
+            dist,
             args.gamma,
         ) # TODO add support for additional hyperparameters
         if args.resume_path:
@@ -408,8 +409,6 @@ def train_agent(
     )
     test_collector = Collector(policy, test_envs, exploration_noise=True)
     # policy.set_eps(1)
-    #import pdb
-    #pdb.set_trace()
     train_collector.collect(n_step=args.batch_size * args.training_num)
 
     # ======== tensorboard logging setup =========
@@ -445,24 +444,56 @@ def train_agent(
         return rews[:, args.agent_id]
 
     # trainer
-    result = offpolicy_trainer(
-        policy,
-        train_collector,
-        test_collector,
-        args.epoch,
-        args.step_per_epoch,
-        args.step_per_collect,
-        args.test_num,
-        args.batch_size,
-        train_fn=train_fn,
-        test_fn=test_fn,
-        stop_fn=None,
-        save_best_fn=save_best_fn,
-        update_per_step=args.update_per_step,
-        logger=logger,
-        test_in_train=False,
-        reward_metric=reward_metric,
-    )
+    if args.agent_learn == 'dqn':
+        result = offpolicy_trainer(
+            policy,
+            train_collector,
+            test_collector,
+            args.epoch,
+            args.step_per_epoch,
+            args.step_per_collect,
+            args.test_num,
+            args.batch_size,
+            train_fn=train_fn,
+            test_fn=test_fn,
+            stop_fn=None,
+            save_best_fn=save_best_fn,
+            update_per_step=args.update_per_step,
+            logger=logger,
+            test_in_train=False,
+            reward_metric=reward_metric,
+        )
+    if args.agent_learn == 'ppo':
+        result = onpolicy_trainer(
+            policy,
+            train_collector,
+            test_collector,
+            args.epoch,
+            args.step_per_epoch,
+            10, # args.repeat_per_collect
+            args.test_num,
+            args.batch_size,
+            step_per_collect=args.step_per_collect,
+            save_best_fn=save_best_fn,
+            logger=logger,
+            test_in_train=False,
+        )
+
+    if args.agent_learn == 'pg':
+        result = onpolicy_trainer(
+            policy,
+            train_collector,
+            test_collector,
+            args.epoch,
+            args.step_per_epoch,
+            10, # args.repeat_per_collect
+            args.test_num,
+            args.batch_size,
+            step_per_collect=args.step_per_collect,
+            save_best_fn=save_best_fn,
+            logger=logger,
+            test_in_train=False,
+        )
 
     return result, policy.policies[agents[args.agent_id]], policy.policies[agents[args.agent_id-1]]
 
@@ -484,7 +515,7 @@ def watch(
         args, agent_learn=agent_learn, agent_opponent=agent_opponent
     )
     policy.eval()
-    policy.policies[agents[args.agent_id]].set_eps(args.eps_test)
+    policy.policies[agents[args.agent_id]]#.set_eps(args.eps_test)
     #policy.policies[agents[args.agent_id-1]].set_eps(args.eps_test)
     collector = Collector(policy, env, exploration_noise=True)
 

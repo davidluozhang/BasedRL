@@ -124,12 +124,9 @@ class MaskedPPO(A2CPolicy):
             self._buffer, self._indices = buffer, indices
         batch = self._compute_returns(batch, buffer, indices)
         batch.act = to_torch_as(batch.act, batch.v_s)
-        old_log_prob = []
         with torch.no_grad():
-            for minibatch in batch.split(self._batch, shuffle=False, merge_last=True):
-                old_log_prob.append(self(minibatch).dist.log_prob(minibatch.act))
+            batch.logp_old = self(batch).dist.log_prob(batch.act)
 
-        batch.logp_old = torch.cat(old_log_prob, dim=0)
         return batch
 
     def learn(  # type: ignore
@@ -144,12 +141,14 @@ class MaskedPPO(A2CPolicy):
             for minibatch in batch.split(batch_size, merge_last=True):
                 # calculate loss for actor
                 dist = self(minibatch).dist
+                import pdb
+                pdb.set_trace()
+                print(f"dist grad {minibatch.grad}")
                 if self._norm_adv:
                     mean, std = minibatch.adv.mean(), minibatch.adv.std()
                     minibatch.adv = (minibatch.adv - mean) / std  # per-batch norm
 
-                with torch.no_grad():
-                    ratio = (dist.log_prob(minibatch.act) -
+                ratio = (dist.log_prob(minibatch.act) -
                              minibatch.logp_old).exp().float()
 
                 ratio = ratio.reshape(ratio.size(0), -1).transpose(0, 1)
@@ -176,12 +175,18 @@ class MaskedPPO(A2CPolicy):
                     vf_loss = (minibatch.returns - value).pow(2).mean()
                 # calculate regularization and overall loss
                 ent_loss = dist.entropy().mean()
+                print(f"ent loss grad {vf_loss.grad}")
                 loss = clip_loss + self._weight_vf * vf_loss \
                        - self._weight_ent * ent_loss
-                #print(f"Loss Gradient: {loss.grad} \t Clip Loss Gradient: {clip_loss.grad}")
-                #print(f"Loss: {loss} \t Type: {type(loss)}")
+                # loss = clip_loss.mul(self._weight_vf).add(vf_loss).sub(ent_loss.mul(self._weight_ent))
+                # loss = torch.tensor(loss, requires_grad=True)
                 self.optim.zero_grad()
+                loss.retain_grad()
                 loss.backward()
+                print(f"Loss Gradient: {loss.grad} \t Clip Loss Gradient: {clip_loss.grad}")
+                print(f"Loss: {loss} \t Type: {type(loss)}")
+                print(loss.is_leaf)
+                print(loss.requires_grad)
                 if self._grad_norm:  # clip large gradient
                     nn.utils.clip_grad_norm_(
                         self._actor_critic.parameters(), max_norm=self._grad_norm,
@@ -191,7 +196,6 @@ class MaskedPPO(A2CPolicy):
                 vf_losses.append(vf_loss.item())
                 ent_losses.append(ent_loss.item())
                 losses.append(loss.item())
-        print(losses)
         return {
             "loss": losses,
             "loss/clip": clip_losses,
@@ -256,8 +260,9 @@ class MaskedPPO(A2CPolicy):
             Please refer to :meth:`~tianshou.policy.BasePolicy.forward` for
             more detailed explanation.
         """
-
-        obs = batch.obs.obs
+        # import pdb
+        # pdb.set_trace()
+        obs = torch.from_numpy(batch.obs.obs).cpu()
         logits, hidden = self.actor(obs, state=state)
         mask = torch.as_tensor(batch.obs.mask, dtype=bool, device=logits.device)
 
